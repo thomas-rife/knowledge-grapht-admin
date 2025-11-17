@@ -150,47 +150,76 @@ const QuestionDataGrid = ({
       );
 
       if (!result.success) {
-        alert(result.error || "Failed to import questions");
+        alert(`Import failed:\n\n${result.error}`);
         return;
       }
 
-      alert(
-        `Successfully imported ${result.imported} questions (${result.failed} failed)`
-      );
+      // Build detailed message
+      let message = `Import Complete!\n\n`;
+      message += `Total rows processed: ${result.total ?? 0}\n`;
+      message += `✅ Successfully imported: ${
+        result.imported ?? 0
+      } questions\n`;
 
-      const lessonQuestions = await getLessonQuestions(
-        params.className,
-        params.lessonName
-      );
-      const tableRows = lessonQuestions.map(
-        ({
-          question_id,
-          question_type,
-          prompt,
-          snippet,
-          topics,
-          answer_options,
-          answer,
-          image_url,
-        }) => ({
-          id: question_id,
-          promptColumn: prompt,
-          questionTypeColumn: question_type,
-          snippetColumn: snippet,
-          unitsCoveredColumn: topics?.join(", ") || "",
-          optionsColumn: Array.isArray(answer_options)
-            ? answer_options.join(", ")
-            : "",
-          answerColumn: answer,
-          imageUrlColumn: image_url || "",
-        })
-      );
-      setRows(tableRows);
+      if ((result.failed ?? 0) > 0) {
+        message += `❌ Failed: ${result.failed} questions\n`;
+      }
+
+      if (result.validationErrors && result.validationErrors.length > 0) {
+        message += `\nValidation Errors (${result.validationErrors.length}):\n`;
+        message += result.validationErrors.slice(0, 5).join("\n");
+        if (result.validationErrors.length > 5) {
+          message += `\n...and ${result.validationErrors.length - 5} more`;
+        }
+      }
+
+      if (result.uploadErrors && result.uploadErrors.length > 0) {
+        message += `\n\nUpload Errors:\n`;
+        message += result.uploadErrors.slice(0, 3).join("\n");
+        if (result.uploadErrors.length > 3) {
+          message += `\n...and ${result.uploadErrors.length - 3} more`;
+        }
+      }
+
+      alert(message);
+
+      // Refresh the grid if any questions were imported
+      if ((result.imported ?? 0) > 0) {
+        const lessonQuestions = await getLessonQuestions(
+          params.className,
+          params.lessonName
+        );
+        const tableRows = lessonQuestions.map(
+          ({
+            question_id,
+            question_type,
+            prompt,
+            snippet,
+            topics,
+            answer_options,
+            answer,
+            image_url,
+          }) => ({
+            id: question_id,
+            promptColumn: prompt,
+            questionTypeColumn: question_type,
+            snippetColumn: snippet,
+            unitsCoveredColumn: topics?.join(", ") || "",
+            optionsColumn: Array.isArray(answer_options)
+              ? answer_options.join(", ")
+              : "",
+            answerColumn: answer,
+            imageUrlColumn: image_url || "",
+          })
+        );
+        setRows(tableRows);
+      }
+
       setImportDialogOpen(false);
       setImportText("");
     } catch (e) {
       console.error("Import error:", e);
-      alert("Error importing questions");
+      alert("Error importing questions: " + (e as Error).message);
     } finally {
       setImporting(false);
     }

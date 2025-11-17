@@ -701,7 +701,6 @@ export async function importQuestionsFromFile(
 
   try {
     const text = csvText;
-    let rows: any[] = [];
 
     // Simple CSV parsing
     const lines = text.split(/\r?\n/).filter((line) => line.trim());
@@ -715,6 +714,21 @@ export async function importQuestionsFromFile(
 
     const headers = lines[0].split(",").map((h) => h.trim().toLowerCase());
 
+    // Validate required headers
+    const requiredHeaders = ["prompt", "question_type", "answer"];
+    const missingHeaders = requiredHeaders.filter((h) => !headers.includes(h));
+
+    if (missingHeaders.length > 0) {
+      return {
+        success: false,
+        error: `Missing required columns: ${missingHeaders.join(
+          ", "
+        )}. Please check your CSV format.`,
+      };
+    }
+
+    // Parse all rows first
+    let parsedRows: any[] = [];
     for (let i = 1; i < lines.length; i++) {
       const values = lines[i].split(",");
       const row: any = {};
@@ -727,29 +741,99 @@ export async function importQuestionsFromFile(
         }
         row[header] = v;
       });
-      rows.push(row);
+      parsedRows.push(row);
     }
 
-    let imported = 0;
-    let failed = 0;
+    // Validate and prepare questions
+    const validQuestions: any[] = [];
+    const errors: string[] = [];
+    let rowNum = 2; // Start at 2 (1 is header)
 
-    for (const row of rows) {
+    for (const row of parsedRows) {
       try {
+        // Validate required fields
+        if (!row.prompt || !row.prompt.trim()) {
+          errors.push(`Row ${rowNum}: Missing prompt`);
+          rowNum++;
+          continue;
+        }
+
+        if (!row.answer || !row.answer.trim()) {
+          errors.push(`Row ${rowNum}: Missing answer`);
+          rowNum++;
+          continue;
+        }
+
+        const questionType = (row.question_type || "multiple-choice")
+          .toLowerCase()
+          .trim();
+
+        // Normalize question type
+        let normalizedType = "multiple-choice";
+        if (
+          questionType === "multiple-choice" ||
+          questionType === "multiple_choice" ||
+          questionType === "mc" ||
+          questionType === "mcq"
+        ) {
+          normalizedType = "multiple-choice";
+        } else if (questionType === "rearrange") {
+          normalizedType = "rearrange";
+        } else {
+          errors.push(
+            `Row ${rowNum}: Unsupported question type "${row.question_type}". Use "multiple-choice" or "rearrange"`
+          );
+          rowNum++;
+          continue;
+        }
+
         const questionData: any = {
-          questionType: row.question_type || "multiple-choice",
-          prompt: row.prompt,
-          snippet: row.snippet || "",
+          questionType: normalizedType,
+          prompt: row.prompt.trim(),
+          snippet: row.snippet ? row.snippet.trim() : "",
           topics: row.topics
-            ? row.topics.split(";").map((t: string) => t.trim())
+            ? row.topics
+                .split(";")
+                .map((t: string) => t.trim())
+                .filter(Boolean)
             : [],
-          answer: row.answer,
-          image_url: row.image_url || null,
+          answer: row.answer.trim(),
+          image_url:
+            row.image_url && row.image_url.trim() ? row.image_url.trim() : null,
         };
 
-        if (questionData.questionType === "multiple-choice") {
+        // Handle answer options for multiple-choice
+        if (normalizedType === "multiple-choice") {
+          if (!row.answer_options || !row.answer_options.trim()) {
+            errors.push(
+              `Row ${rowNum}: Multiple-choice questions require answer_options`
+            );
+            rowNum++;
+            continue;
+          }
+
           const options = row.answer_options
-            ? row.answer_options.split(";").map((o: string) => o.trim())
-            : [];
+            .split(";")
+            .map((o: string) => o.trim())
+            .filter(Boolean);
+
+          if (options.length < 2) {
+            errors.push(
+              `Row ${rowNum}: Multiple-choice questions need at least 2 options (found ${options.length})`
+            );
+            rowNum++;
+            continue;
+          }
+
+          // Check if the answer is one of the options
+          if (!options.includes(questionData.answer)) {
+            errors.push(
+              `Row ${rowNum}: Answer "${questionData.answer}" is not in the answer_options`
+            );
+            rowNum++;
+            continue;
+          }
+
           questionData.answerOptions = options.map(
             (opt: string, i: number) => ({
               [`option${i + 1}`]: opt,
@@ -757,34 +841,61 @@ export async function importQuestionsFromFile(
           );
         }
 
-        if (!questionData.prompt || !questionData.answer) {
-          console.error("Skipping row - missing prompt or answer:", row);
-          failed++;
-          continue;
-        }
+        validQuestions.push(questionData);
+      } catch (e: any) {
+        errors.push(`Row ${rowNum}: ${e.message}`);
+      }
+      rowNum++;
+    }
 
+    // If no valid questions, return error
+    if (validQuestions.length === 0) {
+      return {
+        success: false,
+        error: `No valid questions found. Errors:\n${errors
+          .slice(0, 10)
+          .join("\n")}`,
+      };
+    }
+
+    // Now upload only the valid questions
+    let imported = 0;
+    let failed = 0;
+    const uploadErrors: string[] = [];
+
+    for (let i = 0; i < validQuestions.length; i++) {
+      try {
         const result = await createNewQuestion(
           lessonName,
           className,
-          questionData
+          validQuestions[i]
         );
 
         if (result.success) {
           imported++;
         } else {
           failed++;
-          console.error("Failed to import question:", result.error);
+          uploadErrors.push(
+            `Question ${i + 1}: ${result.error || "Unknown error"}`
+          );
         }
-      } catch (e) {
-        console.error("Error importing row:", e);
+      } catch (e: any) {
         failed++;
+        uploadErrors.push(`Question ${i + 1}: ${e.message}`);
       }
     }
 
-    return { success: true, imported, failed };
+    return {
+      success: true,
+      imported,
+      failed,
+      validationErrors: errors,
+      uploadErrors: uploadErrors,
+      total: parsedRows.length,
+    };
   } catch (e: any) {
     console.error("Import file error:", e);
-    return { success: false, error: e.message || "Failed to parse text" };
+    return { success: false, error: e.message || "Failed to parse CSV" };
   }
 }
 
