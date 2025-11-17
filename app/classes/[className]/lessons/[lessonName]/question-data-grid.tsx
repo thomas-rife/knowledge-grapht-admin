@@ -277,19 +277,19 @@ const QuestionDataGrid = ({
       const payload = {
         questionType: serverQuestionType,
         prompt: draftPrompt.trim(),
-        snippet: draftSnippet.trim() || null,
+        snippet: draftSnippet.trim() || "",
         topics,
         answerOptions,
-        answer: draftAnswer.trim() || null,
+        answer: draftAnswer.trim() || "",
         image_url: draftImageUrl.trim() || null,
         is_ai_generated: true,
       };
 
-      console.log(
-        "[UI] createNewQuestion payload.image_url =>",
-        payload.image_url,
-        payload
-      );
+      // console.log(
+      //   "[UI] createNewQuestion payload.image_url =>",
+      //   payload.image_url,
+      //   payload
+      // );
 
       const res = await createNewQuestion(
         params.lessonName,
