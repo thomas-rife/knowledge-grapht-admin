@@ -29,6 +29,7 @@ import {
   deleteQuestionFromLesson,
   createNewQuestion,
   getClassIdByName,
+  importQuestionsFromFile,
 } from "@/app/classes/[className]/lessons/[lessonName]/actions";
 import DataGridSkeleton from "@/components/skeletons/data-grid-skeleton";
 import { useQuestionContext } from "@/contexts/question-context";
@@ -98,6 +99,10 @@ const QuestionDataGrid = ({
   const [draftAnswer, setDraftAnswer] = useState("");
   const [draftImageUrl, setDraftImageUrl] = useState("");
 
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [importing, setImporting] = useState(false);
+
   const normalizeOptions = (arr: any[]): string[] => {
     if (!Array.isArray(arr)) return [];
     return arr.map((o) => {
@@ -130,6 +135,65 @@ const QuestionDataGrid = ({
       }
       return String(o ?? "");
     });
+  };
+
+  const handleImport = async () => {
+    const text = importText.trim();
+    if (!text) return;
+
+    setImporting(true);
+    try {
+      const result = await importQuestionsFromFile(
+        text,
+        params.className,
+        params.lessonName
+      );
+
+      if (!result.success) {
+        alert(result.error || "Failed to import questions");
+        return;
+      }
+
+      alert(
+        `Successfully imported ${result.imported} questions (${result.failed} failed)`
+      );
+
+      const lessonQuestions = await getLessonQuestions(
+        params.className,
+        params.lessonName
+      );
+      const tableRows = lessonQuestions.map(
+        ({
+          question_id,
+          question_type,
+          prompt,
+          snippet,
+          topics,
+          answer_options,
+          answer,
+          image_url,
+        }) => ({
+          id: question_id,
+          promptColumn: prompt,
+          questionTypeColumn: question_type,
+          snippetColumn: snippet,
+          unitsCoveredColumn: topics?.join(", ") || "",
+          optionsColumn: Array.isArray(answer_options)
+            ? answer_options.join(", ")
+            : "",
+          answerColumn: answer,
+          imageUrlColumn: image_url || "",
+        })
+      );
+      setRows(tableRows);
+      setImportDialogOpen(false);
+      setImportText("");
+    } catch (e) {
+      console.error("Import error:", e);
+      alert("Error importing questions");
+    } finally {
+      setImporting(false);
+    }
   };
 
   const handleGenerateAI = async () => {
@@ -571,8 +635,21 @@ const QuestionDataGrid = ({
         <>
           {/* Generate button */}
           <Box
-            sx={{ display: "flex", justifyContent: "flex-end", mb: 1, pr: 2 }}
+            sx={{
+              display: "flex",
+              justifyContent: "flex-end",
+              mb: 1,
+              pr: 2,
+              gap: 2,
+            }}
           >
+            <Button
+              variant="outlined"
+              color="primary"
+              onClick={() => setImportDialogOpen(true)}
+            >
+              Import Questions
+            </Button>
             <Button
               variant="contained"
               color="primary"
@@ -712,6 +789,101 @@ const QuestionDataGrid = ({
               <Button onClick={() => setPreviewOpen(false)}>Cancel</Button>
               <Button variant="contained" onClick={handleSaveGenerated}>
                 Save to Lesson
+              </Button>
+            </DialogActions>
+          </Dialog>
+
+          {/* Import Dialog */}
+          <Dialog
+            open={importDialogOpen}
+            onClose={() => {
+              setImportDialogOpen(false);
+              setImportText("");
+            }}
+            fullWidth
+            maxWidth="sm"
+          >
+            <DialogTitle>Import Questions from Text</DialogTitle>
+            <DialogContent dividers>
+              <Stack spacing={2}>
+                <TextField
+                  label="Paste CSV text here"
+                  value={importText}
+                  onChange={(e) => setImportText(e.target.value)}
+                  fullWidth
+                  multiline
+                  minRows={6}
+                  placeholder={`prompt,question_type,snippet,topics,answer_options,answer,image_url
+"What command can be used to unzip a file?",multiple-choice,"","Command Line Basics","unzip;zipopen;extract;openzip","unzip",""`}
+                />
+
+                <Box sx={{ fontSize: 14, color: "text.secondary" }}>
+                  <strong>CSV must include this header row exactly:</strong>
+                  <Box sx={{ fontSize: 12, fontFamily: "monospace" }}>
+                    prompt,question_type,snippet,topics,answer_options,answer,image_url
+                  </Box>
+                </Box>
+
+                <Box sx={{ fontSize: 14, color: "text.secondary", mt: 1 }}>
+                  <strong>Example data row:</strong>
+                  <Box sx={{ fontSize: 12, fontFamily: "monospace" }}>
+                    "Which command shows the current
+                    folder?",multiple-choice,"","Command Line
+                    Basics","ls;cd;pwd;mkdir","pwd",""
+                  </Box>
+                </Box>
+
+                <Box sx={{ fontSize: 14, color: "text.secondary" }}>
+                  <strong>Formatting rules:</strong>
+                  <ul
+                    style={{
+                      marginTop: 8,
+                      paddingLeft: 20,
+                      display: "flex",
+                      flexDirection: "column",
+                      rowGap: 8,
+                    }}
+                  >
+                    <li>prompt is required</li>
+                    <li>
+                      question_type is required, use "multiple-choice" for now
+                    </li>
+                    <li>snippet is optional, use "" if you want it empty</li>
+                    <li>
+                      topics is required. Use a semicolon separated list like
+                      "Command Line Basics;Loops" and make sure they are topics
+                      in the knowledge graph.
+                    </li>
+                    <li>
+                      answer_options is optional for multiple-choice, use a
+                      semicolon separated list like "A;B;C;D"
+                    </li>
+                    <li>
+                      answer is required and should match one of the
+                      answer_options
+                    </li>
+                    <li>
+                      image_url is optional, use "" if you do not have an image
+                    </li>
+                  </ul>
+                </Box>
+              </Stack>
+            </DialogContent>
+            <DialogActions>
+              <Button
+                onClick={() => {
+                  setImportDialogOpen(false);
+                  setImportText("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="contained"
+                onClick={handleImport}
+                disabled={!importText.trim() || importing}
+              >
+                {importing ? "Importing..." : "Import"}
               </Button>
             </DialogActions>
           </Dialog>

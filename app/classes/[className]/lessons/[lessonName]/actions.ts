@@ -225,7 +225,7 @@ export async function createNewQuestion(
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  console.log("RLS debug user.id =", user?.id);
+  // console.log("RLS debug user.id =", user?.id);
 
   // RLS preflight that tolerates duplicates in professor_courses
   const { count: profCount, error: profErr } = await supabase
@@ -261,7 +261,6 @@ export async function createNewQuestion(
   const cleanedLessonName = decodeURIComponent(lessonName ?? "")
     .replace(/-/g, " ")
     .trim();
-
   const normalizedImageUrl =
     typeof (questionData as any)?.image_url === "string" &&
     (questionData as any).image_url.trim()
@@ -289,7 +288,7 @@ export async function createNewQuestion(
       (option) => Object.values(option)[0]
     );
 
-    console.log("About to insert with image_url:", normalizedImageUrl);
+    // console.log("About to insert with image_url:", normalizedImageUrl);
 
     const { data: insertedMC, error: insertErrMC } = await supabase
       .from("questions")
@@ -441,13 +440,13 @@ export async function createNewQuestion(
   }
 
   // Resolve lesson id through the class_lesson_bank to ensure it belongs to the class
-  const { data: link, error: lessonIDError } = await supabase
+  // Resolve lesson id through the class_lesson_bank to ensure it belongs to the class
+  const { data: links, error: lessonIDError } = await supabase
     .from("class_lesson_bank")
-    .select("lesson_id, lessonDetails:lessons(name)")
+    .select("lesson_id, lessons!inner(lesson_id, name)") // Use inner join
     .eq("class_id", classID.class_id)
-    .ilike("lessonDetails.name", cleanedLessonName)
-    .limit(1)
-    .maybeSingle();
+    .eq("lessons.name", cleanedLessonName) // Exact match on joined table
+    .limit(2); // Get up to 2 to detect duplicates
 
   if (lessonIDError) {
     console.error(
@@ -456,7 +455,7 @@ export async function createNewQuestion(
     );
     return { success: false, error: lessonIDError };
   }
-  if (!link) {
+  if (!links || links.length === 0) {
     console.error(
       "No lesson match for: ",
       cleanedLessonName,
@@ -465,7 +464,16 @@ export async function createNewQuestion(
     );
     return { success: false, error: "Lesson not found for this class" };
   }
-  const lessonID = { lesson_id: link.lesson_id };
+  if (links.length > 1) {
+    console.error(
+      "⚠️ Multiple lessons found with name:",
+      cleanedLessonName,
+      links
+    );
+    return { success: false, error: "Multiple lessons match this name" };
+  }
+
+  const lessonID = { lesson_id: links[0].lesson_id };
 
   // Link question to lesson
   const { error: lessonQuestionBankError } = await supabase
@@ -499,7 +507,7 @@ export const deleteQuestionFromLesson = async (
       return { success: false, error: "Invalid question id" };
     }
 
-    // Resolve class_id from className (supports slug with dashes)
+    // Resolve class_id
     const cleanedClassName = decodeURIComponent(className)
       .replace(/-/g, " ")
       .trim();
@@ -512,71 +520,107 @@ export const deleteQuestionFromLesson = async (
     if (clsErr) return { success: false, error: clsErr.message };
     if (!cls?.class_id) return { success: false, error: "Class not found" };
 
-    // Resolve lesson_id for that class and lessonName
+    // Resolve lesson_id
     const cleanedLessonName = decodeURIComponent(lessonName)
       .replace(/-/g, " ")
       .trim();
-    // NEW - handles multiple rows gracefully
+
     const { data: links, error: linkErr } = await supabase
       .from("class_lesson_bank")
-      .select("lesson_id, lessonDetails:lessons(name)")
+      .select("lesson_id, lessons!inner(lesson_id, name)")
       .eq("class_id", cls.class_id)
-      .eq("lessonDetails.name", cleanedLessonName) // Use .eq for exact match
+      .eq("lessons.name", cleanedLessonName)
       .limit(2);
 
     if (linkErr) return { success: false, error: linkErr.message };
     if (!links || links.length === 0)
       return { success: false, error: "Lesson not found for class" };
     if (links.length > 1) {
-      console.warn(
-        "⚠️ Multiple lessons matched for delete:",
-        cleanedLessonName,
-        links
-      );
-      // Just use the first one
+      console.warn("⚠️ Multiple lessons matched:", cleanedLessonName, links);
     }
 
-    const link = links[0];
+    const lessonId = links[0].lesson_id;
 
-    const lessonId = link.lesson_id;
+    // Check BEFORE deleting
+    const { count: beforeLessonCount } = await supabase
+      .from("lesson_question_bank")
+      .select("question_id", { count: "exact", head: true })
+      .eq("question_id", questionId);
 
-    // 1) Delete the link from lesson_question_bank
+    const { count: beforeClassCount } = await supabase
+      .from("class_question_bank")
+      .select("question_id", { count: "exact", head: true })
+      .eq("question_id", questionId);
+
+    // Delete from lesson_question_bank
     const { error: delLinkErr } = await supabase
       .from("lesson_question_bank")
       .delete()
       .eq("lesson_id", lessonId)
       .eq("question_id", questionId);
 
-    if (delLinkErr) return { success: false, error: delLinkErr.message };
+    if (delLinkErr) {
+      console.error("Error deleting from lesson_question_bank:", delLinkErr);
+      return { success: false, error: delLinkErr.message };
+    }
 
-    // 2) If this question is no longer referenced by any lesson, delete it from questions
-    const { count, error: cntErr } = await supabase
-      .from("lesson_question_bank")
-      .select("question_id", { count: "exact", head: true })
-      .eq("question_id", questionId);
-
-    if (cntErr) return { success: false, error: cntErr.message };
-
-    if ((count ?? 0) === 0) {
-      // Optionally also ensure not in class_question_bank
-      const { count: cqCount, error: cqErr } = await supabase
-        .from("class_question_bank")
+    // Check remaining references
+    const { count: remainingLessonCount, error: lessonCountErr } =
+      await supabase
+        .from("lesson_question_bank")
         .select("question_id", { count: "exact", head: true })
         .eq("question_id", questionId);
 
-      if (cqErr) return { success: false, error: cqErr.message };
+    if (lessonCountErr) {
+      console.error("Error counting lesson refs:", lessonCountErr);
+      return { success: false, error: lessonCountErr.message };
+    }
 
-      if ((cqCount ?? 0) === 0) {
-        const { error: delQErr } = await supabase
-          .from("questions")
+    const { count: remainingClassCount, error: classCountErr } = await supabase
+      .from("class_question_bank")
+      .select("question_id", { count: "exact", head: true })
+      .eq("question_id", questionId);
+
+    if (classCountErr) {
+      console.error("Error counting class refs:", classCountErr);
+      return { success: false, error: classCountErr.message };
+    }
+
+    // If no references remain, delete from class_question_bank then questions
+    if ((remainingLessonCount ?? 0) === 0) {
+      // Delete from class_question_bank first
+      if ((remainingClassCount ?? 0) > 0) {
+        const { error: delClassErr } = await supabase
+          .from("class_question_bank")
           .delete()
           .eq("question_id", questionId);
-        if (delQErr) return { success: false, error: delQErr.message };
+
+        if (delClassErr) {
+          console.error(
+            "Error deleting from class_question_bank:",
+            delClassErr
+          );
+        }
+      }
+
+      const { error: delQErr } = await supabase
+        .from("questions")
+        .delete()
+        .eq("question_id", questionId);
+
+      if (delQErr) {
+        console.error("Error deleting from questions table:", delQErr);
+        // Don't fail the whole operation - the link deletion succeeded
+      } else {
+        // console.log(
+        //   `Successfully deleted question ${questionId} from questions table`
+        // );
       }
     }
 
     return { success: true };
   } catch (e: any) {
+    console.error("Exception in deleteQuestionFromLesson:", e);
     return { success: false, error: e?.message || "Unknown error" };
   }
 };
@@ -640,97 +684,108 @@ export async function updateQuestion(id: number, questionData: Question) {
   return { success: true };
 }
 
-export async function deleteQuestion(
+export async function importQuestionsFromFile(
+  csvText: string,
   className: string,
-  lessonName: string,
-  questionId: number
+  lessonName: string
 ) {
   const supabase = createClient();
 
-  const userResponse = await supabase.auth.getUser();
-  const user = userResponse.data.user;
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  if (!user) {
-    console.error("No user found");
+  if (!user?.id) {
     return { success: false, error: "No user found" };
   }
 
-  const cleanedClassName = decodeURIComponent(className ?? "")
-    .replace(/-/g, " ")
-    .trim();
-  const cleanedLessonName = decodeURIComponent(lessonName ?? "")
-    .replace(/-/g, " ")
-    .trim();
+  try {
+    const text = csvText;
+    let rows: any[] = [];
 
-  let classRows: { class_id: number }[] = [];
-  let classErr = null;
+    // Simple CSV parsing
+    const lines = text.split(/\r?\n/).filter((line) => line.trim());
+    if (lines.length < 2) {
+      return {
+        success: false,
+        error:
+          "No data rows found. Make sure you included the header row and at least one question row.",
+      };
+    }
 
-  {
-    const resp = await supabase
-      .from("classes")
-      .select("class_id")
-      .eq("name", cleanedClassName)
-      .limit(2);
-    classRows = resp.data || [];
-    classErr = resp.error;
+    const headers = lines[0].split(",").map((h) => h.trim().toLowerCase());
+
+    for (let i = 1; i < lines.length; i++) {
+      const values = lines[i].split(",");
+      const row: any = {};
+      headers.forEach((header, idx) => {
+        let v = values[idx] ?? "";
+        v = v.trim();
+        // Remove surrounding double quotes if present
+        if (v.startsWith('"') && v.endsWith('"')) {
+          v = v.slice(1, -1);
+        }
+        row[header] = v;
+      });
+      rows.push(row);
+    }
+
+    let imported = 0;
+    let failed = 0;
+
+    for (const row of rows) {
+      try {
+        const questionData: any = {
+          questionType: row.question_type || "multiple-choice",
+          prompt: row.prompt,
+          snippet: row.snippet || "",
+          topics: row.topics
+            ? row.topics.split(";").map((t: string) => t.trim())
+            : [],
+          answer: row.answer,
+          image_url: row.image_url || null,
+        };
+
+        if (questionData.questionType === "multiple-choice") {
+          const options = row.answer_options
+            ? row.answer_options.split(";").map((o: string) => o.trim())
+            : [];
+          questionData.answerOptions = options.map(
+            (opt: string, i: number) => ({
+              [`option${i + 1}`]: opt,
+            })
+          );
+        }
+
+        if (!questionData.prompt || !questionData.answer) {
+          console.error("Skipping row - missing prompt or answer:", row);
+          failed++;
+          continue;
+        }
+
+        const result = await createNewQuestion(
+          lessonName,
+          className,
+          questionData
+        );
+
+        if (result.success) {
+          imported++;
+        } else {
+          failed++;
+          console.error("Failed to import question:", result.error);
+        }
+      } catch (e) {
+        console.error("Error importing row:", e);
+        failed++;
+      }
+    }
+
+    return { success: true, imported, failed };
+  } catch (e: any) {
+    console.error("Import file error:", e);
+    return { success: false, error: e.message || "Failed to parse text" };
   }
-
-  if (!classErr && classRows.length === 0) {
-    const resp2 = await supabase
-      .from("classes")
-      .select("class_id")
-      .ilike("name", cleanedClassName)
-      .limit(2);
-    classRows = resp2.data || [];
-    classErr = resp2.error;
-  }
-
-  if (classErr) {
-    console.error("Error fetching class ID for deleteQuestion:", classErr);
-    return { success: false, error: classErr };
-  }
-
-  if (classRows.length !== 1) {
-    console.error(
-      "Could not uniquely resolve class for deleteQuestion:",
-      cleanedClassName
-    );
-    return { success: false, error: "Class not found or not unique" };
-  }
-
-  const classId = classRows[0].class_id;
-
-  const { data: lessonLink, error: lessonErr } = await supabase
-    .from("class_lesson_bank")
-    .select("lesson_id, lessonDetails:lessons(name)")
-    .eq("class_id", classId)
-    .ilike("lessonDetails.name", cleanedLessonName)
-    .limit(1)
-    .maybeSingle();
-
-  if (lessonErr) {
-    console.error("Error fetching lesson for deleteQuestion:", lessonErr);
-    return { success: false, error: lessonErr };
-  }
-
-  if (!lessonLink) {
-    console.error("Lesson not found for deleteQuestion:", cleanedLessonName);
-    return { success: false, error: "Lesson not found for class" };
-  }
-
-  const { error } = await supabase
-    .from("lesson_question_bank")
-    .delete()
-    .eq("lesson_id", lessonLink.lesson_id)
-    .eq("question_id", questionId)
-    .eq("owner_id", user.id);
-
-  if (error) {
-    console.error("Error deleting question: ", error);
-    return { success: false, error };
-  }
-
-  return { success: true };
 }
 
 // Generate a draft question with Gemini based on class level, topic and optional examples

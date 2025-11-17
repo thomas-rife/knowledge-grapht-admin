@@ -4,13 +4,6 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
 
-import { Database } from "@/supabase";
-
-// Test if the type exists
-type RPCFunctions = Database["public"]["Functions"];
-type InsertUserFunc =
-  Database["public"]["Functions"]["insert_user_into_respective_table"];
-
 export async function login(formData: FormData) {
   const supabase = createClient();
 

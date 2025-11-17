@@ -107,7 +107,9 @@ export const createNewLesson = async (
   const {
     data: { user },
   } = await supabase.auth.getUser();
-
+  console.log("createNewLesson user id", user?.id);
+  console.log("createNewLesson className", className);
+  console.log("payload", { lessonName, topics });
   if (!user?.id) {
     console.error("No user found");
     return { success: false, error: "No user found" };
