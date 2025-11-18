@@ -684,6 +684,39 @@ export async function updateQuestion(id: number, questionData: Question) {
   return { success: true };
 }
 
+export const getLessonIdByName = async (
+  className: string,
+  lessonName: string
+) => {
+  const supabase = createClient();
+
+  const cleanedClassName = decodeURIComponent(className)
+    .replace(/-/g, " ")
+    .trim();
+  const cleanedLessonName = decodeURIComponent(lessonName)
+    .replace(/-/g, " ")
+    .trim();
+
+  // Get class_id first
+  const { data: cls } = await supabase
+    .from("classes")
+    .select("class_id")
+    .ilike("name", cleanedClassName)
+    .maybeSingle();
+
+  if (!cls) return null;
+
+  // Get lesson_id
+  const { data: link } = await supabase
+    .from("class_lesson_bank")
+    .select("lesson_id, lessons!inner(name)")
+    .eq("class_id", cls.class_id)
+    .ilike("lessons.name", cleanedLessonName)
+    .maybeSingle();
+
+  return link?.lesson_id ?? null;
+};
+
 export async function importQuestionsFromFile(
   csvText: string,
   className: string,

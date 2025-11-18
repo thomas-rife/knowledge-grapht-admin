@@ -30,6 +30,7 @@ import {
   createNewQuestion,
   getClassIdByName,
   importQuestionsFromFile,
+  getLessonIdByName,
 } from "@/app/classes/[className]/lessons/[lessonName]/actions";
 import DataGridSkeleton from "@/components/skeletons/data-grid-skeleton";
 import { useQuestionContext } from "@/contexts/question-context";
@@ -241,12 +242,20 @@ const QuestionDataGrid = ({
         return;
       }
 
+      const lessonId = await getLessonIdByName(
+        params.className,
+        params.lessonName
+      );
+
+      if (!lessonId) {
+        alert("Could not find lesson");
+        return;
+      }
+
       const payload = {
         mode: "generate",
         class_id: Number(classId),
-        lesson_name: decodeURIComponent(params.lessonName)
-          .replace(/-/g, " ")
-          .trim(),
+        lesson_id: lessonId,
       };
 
       const backend =
