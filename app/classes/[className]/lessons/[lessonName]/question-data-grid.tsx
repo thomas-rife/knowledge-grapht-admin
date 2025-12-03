@@ -144,11 +144,30 @@ const QuestionDataGrid = ({
 
     setImporting(true);
     try {
-      const result = await importQuestionsFromFile(
-        text,
-        params.className,
-        params.lessonName
-      );
+      // Decode and clean the lesson name/ID from URL params
+      const rawLesson = Array.isArray(params.lessonName)
+        ? params.lessonName[0]
+        : params.lessonName;
+
+      console.log("[IMPORT] Raw lesson param:", rawLesson);
+
+      // Check if it's a numeric ID
+      const isNumeric = /^\d+$/.test(String(rawLesson));
+
+      let lessonIdentifier;
+      if (isNumeric) {
+        // It's already an ID, use it directly
+        lessonIdentifier = Number(rawLesson);
+        console.log("[IMPORT] Using lesson ID:", lessonIdentifier);
+      } else {
+        // It's a name/slug - decode and convert hyphens to spaces
+        lessonIdentifier = decodeURIComponent(String(rawLesson))
+          .replace(/-/g, " ")
+          .trim();
+        console.log("[IMPORT] Using lesson name:", lessonIdentifier);
+      }
+
+      const result = await importQuestionsFromFile(text, lessonIdentifier);
 
       if (!result.success) {
         alert(`Import failed:\n\n${result.error}`);

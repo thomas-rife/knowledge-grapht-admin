@@ -719,8 +719,7 @@ export const getLessonIdByName = async (
 
 export async function importQuestionsFromFile(
   csvText: string,
-  className: string,
-  lessonName: string
+  lessonIdOrName: string | number
 ) {
   const supabase = createClient();
 
@@ -733,19 +732,95 @@ export async function importQuestionsFromFile(
   }
 
   try {
+    // Only resolve the lesson
+    console.log("[IMPORT] Looking up lesson:", lessonIdOrName);
+
+    let lessonData;
+    if (
+      typeof lessonIdOrName === "number" ||
+      /^\d+$/.test(String(lessonIdOrName))
+    ) {
+      // It's an ID
+      const { data, error } = await supabase
+        .from("lessons")
+        .select("lesson_id, name")
+        .eq("lesson_id", Number(lessonIdOrName))
+        .single();
+
+      if (error || !data) {
+        return {
+          success: false,
+          error: `Lesson ID ${lessonIdOrName} not found: ${error?.message}`,
+        };
+      }
+      lessonData = data;
+    } else {
+      // It's a name - try to find it
+      const { data, error } = await supabase
+        .from("lessons")
+        .select("lesson_id, name")
+        .ilike("name", String(lessonIdOrName).trim())
+        .maybeSingle();
+
+      if (error || !data) {
+        return {
+          success: false,
+          error: `Lesson "${lessonIdOrName}" not found: ${
+            error?.message || "No matching lesson"
+          }`,
+        };
+      }
+      lessonData = data;
+    }
+
+    console.log("[IMPORT] Found lesson:", lessonData);
+
     const text = csvText;
 
-    // Simple CSV parsing
+    // Parse CSV with better handling for quoted fields
     const lines = text.split(/\r?\n/).filter((line) => line.trim());
     if (lines.length < 2) {
       return {
         success: false,
         error:
-          "No data rows found. Make sure you included the header row and at least one question row.",
+          "No data rows found. CSV must have header row and at least one data row.",
       };
     }
 
-    const headers = lines[0].split(",").map((h) => h.trim().toLowerCase());
+    // Parse CSV properly handling quotes and commas inside quotes
+    function parseCSVLine(line: string): string[] {
+      const result: string[] = [];
+      let current = "";
+      let inQuotes = false;
+
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        const nextChar = line[i + 1];
+
+        if (char === '"') {
+          if (inQuotes && nextChar === '"') {
+            current += '"';
+            i++;
+          } else {
+            inQuotes = !inQuotes;
+          }
+        } else if (char === "," && !inQuotes) {
+          result.push(current.trim());
+          current = "";
+        } else {
+          current += char;
+        }
+      }
+
+      result.push(current.trim());
+      return result;
+    }
+
+    const headers = parseCSVLine(lines[0]).map((h) =>
+      h.toLowerCase().replace(/['"]/g, "").trim()
+    );
+
+    console.log("[IMPORT] CSV headers:", headers);
 
     // Validate required headers
     const requiredHeaders = ["prompt", "question_type", "answer"];
@@ -756,35 +831,37 @@ export async function importQuestionsFromFile(
         success: false,
         error: `Missing required columns: ${missingHeaders.join(
           ", "
-        )}. Please check your CSV format.`,
+        )}. Found columns: ${headers.join(", ")}`,
       };
     }
 
-    // Parse all rows first
+    // Parse all rows
     let parsedRows: any[] = [];
     for (let i = 1; i < lines.length; i++) {
-      const values = lines[i].split(",");
+      const values = parseCSVLine(lines[i]);
       const row: any = {};
+
       headers.forEach((header, idx) => {
         let v = values[idx] ?? "";
         v = v.trim();
-        // Remove surrounding double quotes if present
         if (v.startsWith('"') && v.endsWith('"')) {
-          v = v.slice(1, -1);
+          v = v.slice(1, -1).replace(/""/g, '"');
         }
         row[header] = v;
       });
+
       parsedRows.push(row);
     }
+
+    console.log("[IMPORT] Parsed", parsedRows.length, "rows");
 
     // Validate and prepare questions
     const validQuestions: any[] = [];
     const errors: string[] = [];
-    let rowNum = 2; // Start at 2 (1 is header)
+    let rowNum = 2;
 
     for (const row of parsedRows) {
       try {
-        // Validate required fields
         if (!row.prompt || !row.prompt.trim()) {
           errors.push(`Row ${rowNum}: Missing prompt`);
           rowNum++;
@@ -801,7 +878,6 @@ export async function importQuestionsFromFile(
           .toLowerCase()
           .trim();
 
-        // Normalize question type
         let normalizedType = "multiple-choice";
         if (
           questionType === "multiple-choice" ||
@@ -812,18 +888,24 @@ export async function importQuestionsFromFile(
           normalizedType = "multiple-choice";
         } else if (questionType === "rearrange") {
           normalizedType = "rearrange";
+        } else if (
+          questionType === "short-answer" ||
+          questionType === "short_answer"
+        ) {
+          normalizedType = "short-answer";
         } else {
           errors.push(
-            `Row ${rowNum}: Unsupported question type "${row.question_type}". Use "multiple-choice" or "rearrange"`
+            `Row ${rowNum}: Unsupported question type "${row.question_type}". Use "multiple-choice", "rearrange", or "short-answer"`
           );
           rowNum++;
           continue;
         }
 
         const questionData: any = {
-          questionType: normalizedType,
+          question_type: normalizedType,
           prompt: row.prompt.trim(),
-          snippet: row.snippet ? row.snippet.trim() : "",
+          snippet:
+            row.snippet && row.snippet.trim() ? row.snippet.trim() : null,
           topics: row.topics
             ? row.topics
                 .split(";")
@@ -858,20 +940,19 @@ export async function importQuestionsFromFile(
             continue;
           }
 
-          // Check if the answer is one of the options
           if (!options.includes(questionData.answer)) {
             errors.push(
-              `Row ${rowNum}: Answer "${questionData.answer}" is not in the answer_options`
+              `Row ${rowNum}: Answer "${
+                questionData.answer
+              }" is not in the answer_options. Options: ${options.join(", ")}`
             );
             rowNum++;
             continue;
           }
 
-          questionData.answerOptions = options.map(
-            (opt: string, i: number) => ({
-              [`option${i + 1}`]: opt,
-            })
-          );
+          questionData.answer_options = options;
+        } else {
+          questionData.answer_options = [];
         }
 
         validQuestions.push(questionData);
@@ -881,7 +962,9 @@ export async function importQuestionsFromFile(
       rowNum++;
     }
 
-    // If no valid questions, return error
+    console.log("[IMPORT] Valid questions:", validQuestions.length);
+    console.log("[IMPORT] Validation errors:", errors.length);
+
     if (validQuestions.length === 0) {
       return {
         success: false,
@@ -891,32 +974,82 @@ export async function importQuestionsFromFile(
       };
     }
 
-    // Now upload only the valid questions
+    // Insert questions
     let imported = 0;
     let failed = 0;
     const uploadErrors: string[] = [];
 
     for (let i = 0; i < validQuestions.length; i++) {
       try {
-        const result = await createNewQuestion(
-          lessonName,
-          className,
-          validQuestions[i]
-        );
+        const q = validQuestions[i];
 
-        if (result.success) {
-          imported++;
-        } else {
+        console.log(`[IMPORT] Inserting question ${i + 1}:`, {
+          prompt: q.prompt.slice(0, 50) + "...",
+          type: q.question_type,
+          topics: q.topics,
+        });
+
+        // Insert question
+        const { data: insertedQuestion, error: insertError } = await supabase
+          .from("questions")
+          .insert({
+            question_type: q.question_type,
+            prompt: q.prompt,
+            snippet: q.snippet,
+            topics: q.topics,
+            answer_options: q.answer_options,
+            answer: q.answer,
+            image_url: q.image_url,
+          })
+          .select("question_id")
+          .single();
+
+        if (insertError || !insertedQuestion) {
+          console.error(
+            `[IMPORT] Failed to insert question ${i + 1}:`,
+            insertError
+          );
           failed++;
           uploadErrors.push(
-            `Question ${i + 1}: ${result.error || "Unknown error"}`
+            `Question ${i + 1}: ${insertError?.message || "Failed to insert"}`
+          );
+          continue;
+        }
+
+        console.log(
+          `[IMPORT] Inserted question ${i + 1}, ID:`,
+          insertedQuestion.question_id
+        );
+
+        // Link to lesson
+        const { error: linkError } = await supabase
+          .from("lesson_question_bank")
+          .insert({
+            lesson_id: lessonData.lesson_id,
+            question_id: insertedQuestion.question_id,
+          });
+
+        if (linkError) {
+          console.error(
+            `[IMPORT] Failed to link question ${i + 1}:`,
+            linkError
+          );
+          uploadErrors.push(
+            `Question ${i + 1}: Created but failed to link to lesson: ${
+              linkError.message
+            }`
           );
         }
+
+        imported++;
       } catch (e: any) {
+        console.error(`[IMPORT] Exception on question ${i + 1}:`, e);
         failed++;
         uploadErrors.push(`Question ${i + 1}: ${e.message}`);
       }
     }
+
+    console.log("[IMPORT] Complete:", { imported, failed });
 
     return {
       success: true,
@@ -927,7 +1060,7 @@ export async function importQuestionsFromFile(
       total: parsedRows.length,
     };
   } catch (e: any) {
-    console.error("Import file error:", e);
+    console.error("[IMPORT] Fatal error:", e);
     return { success: false, error: e.message || "Failed to parse CSV" };
   }
 }
