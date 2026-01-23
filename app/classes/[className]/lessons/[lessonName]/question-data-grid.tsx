@@ -493,14 +493,14 @@ const QuestionDataGrid = ({
       optionsColumn
         ? optionsColumn
             .split(",")
-            .map((s) => s.trim())
+            .map((s: string) => s.trim())
             .filter(Boolean)
         : [],
     );
 
     setTopicsCovered(
       unitsCoveredColumn
-        ? unitsCoveredColumn.split(",").map((s) => s.trim())
+        ? unitsCoveredColumn.split(",").map((s: string) => s.trim())
         : [],
     );
 

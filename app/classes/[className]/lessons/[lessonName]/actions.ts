@@ -9,7 +9,7 @@ const BACKEND_URL =
 
 export const getLessonQuestions = async (
   className: string,
-  lessonName: string
+  lessonName: string,
 ): Promise<
   {
     question_id: number;
@@ -57,7 +57,7 @@ export const getLessonQuestions = async (
     console.error(
       "⚠️ Multiple classes found with name:",
       cleanedClassName,
-      classRows
+      classRows,
     );
     return [];
   }
@@ -81,7 +81,7 @@ export const getLessonQuestions = async (
       "No lesson found for name:",
       cleanedLessonName,
       "in class_id:",
-      classId
+      classId,
     );
     return [];
   }
@@ -89,7 +89,7 @@ export const getLessonQuestions = async (
     console.error(
       "⚠️ Multiple lessons found with name:",
       cleanedLessonName,
-      lessonLinks
+      lessonLinks,
     );
     return [];
   }
@@ -116,7 +116,7 @@ export const getLessonQuestions = async (
     .select("*")
     .in(
       "question_id",
-      questionIDs.map((q) => q.question_id)
+      questionIDs.map((q) => q.question_id),
     );
 
   if (questionsError) {
@@ -145,7 +145,7 @@ export const getClassIdByName = async (className: string) => {
 
 export const getAllowedTopics = async (
   className: string,
-  lessonName?: string
+  lessonName?: string,
 ) => {
   const supabase = createClient();
 
@@ -210,7 +210,7 @@ export const getAllowedTopics = async (
 
   // Return stable list
   return Array.from(allowed).sort((a, b) =>
-    a.localeCompare(b, undefined, { sensitivity: "base" })
+    a.localeCompare(b, undefined, { sensitivity: "base" }),
   );
 };
 
@@ -218,7 +218,7 @@ export const getAllowedTopics = async (
 export async function createNewQuestion(
   lessonName: string,
   className: string | undefined,
-  questionData: Question
+  questionData: Question,
 ) {
   const supabase = createClient();
 
@@ -285,7 +285,7 @@ export async function createNewQuestion(
       : [];
 
     const answerOptionValues = answerOptions.map(
-      (option) => Object.values(option)[0]
+      (option) => Object.values(option)[0],
     );
 
     // console.log("About to insert with image_url:", normalizedImageUrl);
@@ -344,7 +344,7 @@ export async function createNewQuestion(
 
     const studentViewOptions = processRearrangeOptionsData(
       answerOptions,
-      snippet
+      snippet,
     );
 
     const { data: insertedR, error: insertErrR } = await supabase
@@ -415,7 +415,7 @@ export async function createNewQuestion(
   if (clsRowsCQ.length > 1) {
     console.error(
       "Multiple class rows match name. Use a unique slug or ID:",
-      cleanedClassName
+      cleanedClassName,
     );
     return {
       success: false,
@@ -450,7 +450,7 @@ export async function createNewQuestion(
   if (lessonIDError) {
     console.error(
       "Error fetching lesson ID through class_lesson_bank: ",
-      lessonIDError
+      lessonIDError,
     );
     return { success: false, error: lessonIDError };
   }
@@ -459,7 +459,7 @@ export async function createNewQuestion(
       "No lesson match for: ",
       cleanedLessonName,
       "in class_id:",
-      classID.class_id
+      classID.class_id,
     );
     return { success: false, error: "Lesson not found for this class" };
   }
@@ -467,7 +467,7 @@ export async function createNewQuestion(
     console.error(
       "⚠️ Multiple lessons found with name:",
       cleanedLessonName,
-      links
+      links,
     );
     return { success: false, error: "Multiple lessons match this name" };
   }
@@ -486,7 +486,7 @@ export async function createNewQuestion(
   if (lessonQuestionBankError) {
     console.error(
       "Error linking question to lesson: ",
-      lessonQuestionBankError
+      lessonQuestionBankError,
     );
     return { success: false, error: lessonQuestionBankError };
   }
@@ -497,7 +497,7 @@ export async function createNewQuestion(
 export const deleteQuestionFromLesson = async (
   className: string,
   lessonName: string,
-  questionId: number
+  questionId: number,
 ) => {
   try {
     const supabase = createClient();
@@ -597,7 +597,7 @@ export const deleteQuestionFromLesson = async (
         if (delClassErr) {
           console.error(
             "Error deleting from class_question_bank:",
-            delClassErr
+            delClassErr,
           );
         }
       }
@@ -635,6 +635,11 @@ export async function updateQuestion(id: number, questionData: Question) {
     return { success: false, error: "No user found" };
   }
 
+  console.log("=== updateQuestion DEBUG ===");
+  console.log("Question ID to update:", id);
+  console.log("User ID:", user.id);
+  console.log("Incoming questionData:", questionData);
+
   const { questionType, prompt, snippet, topics, answerOptions, answer } =
     questionData;
 
@@ -644,6 +649,15 @@ export async function updateQuestion(id: number, questionData: Question) {
   const safeTopics: string[] = Array.isArray(rawTopics)
     ? rawTopics.filter((t) => typeof t === "string" && t.trim() !== "")
     : [];
+
+  console.log("Extracted fields:");
+  console.log("  questionType:", questionType);
+  console.log("  prompt:", prompt);
+  console.log("  snippet:", snippet);
+  console.log("  rawTopics:", rawTopics);
+  console.log("  safeTopics:", safeTopics);
+  console.log("  answerOptions:", answerOptions);
+  console.log("  answer:", answer);
 
   let updateData: any = {
     question_type: questionType,
@@ -656,36 +670,56 @@ export async function updateQuestion(id: number, questionData: Question) {
 
   if (questionType === "multiple-choice") {
     const answerOptionValues = answerOptions.map((option) =>
-      typeof option === "string" ? option : Object.values(option)[0]
+      typeof option === "string" ? option : Object.values(option)[0],
     );
     updateData.answer_options = answerOptionValues;
+    console.log("Multiple-choice answer_options:", answerOptionValues);
   } else if (questionType === "rearrange") {
     const studentViewOptions = processRearrangeOptionsData(
       answerOptions,
-      snippet
+      snippet,
     );
     updateData.answer_options = [
       { professorView: answerOptions },
       { studentView: studentViewOptions },
     ];
+    console.log("Rearrange answer_options:", updateData.answer_options);
   }
 
-  const { error } = await supabase
+  console.log("Final updateData to send to Supabase:", updateData);
+
+  const { data, error } = await supabase
     .from("questions")
     .update(updateData)
-    .eq("question_id", id);
+    .eq("question_id", id)
+    .select(); // Add .select() to see what was updated
+
+  console.log("Supabase update response:");
+  console.log("  data:", data);
+  console.log("  error:", error);
 
   if (error) {
     console.error("Error updating question data: ", error);
     return { success: false, error };
   }
 
+  if (!data || data.length === 0) {
+    console.error(
+      "No rows were updated! Question may not exist or RLS may be blocking.",
+    );
+    return {
+      success: false,
+      error: "No rows updated - check RLS policies and question_id",
+    };
+  }
+
+  console.log("Successfully updated question:", data[0]);
   return { success: true };
 }
 
 export const getLessonIdByName = async (
   className: string,
-  lessonName: string
+  lessonName: string,
 ) => {
   const supabase = createClient();
 
@@ -718,7 +752,7 @@ export const getLessonIdByName = async (
 
 export async function importQuestionsFromFile(
   csvText: string,
-  lessonIdOrName: string | number
+  lessonIdOrName: string | number,
 ) {
   const supabase = createClient();
 
@@ -816,7 +850,7 @@ export async function importQuestionsFromFile(
     }
 
     const headers = parseCSVLine(lines[0]).map((h) =>
-      h.toLowerCase().replace(/['"]/g, "").trim()
+      h.toLowerCase().replace(/['"]/g, "").trim(),
     );
 
     console.log("[IMPORT] CSV headers:", headers);
@@ -829,7 +863,7 @@ export async function importQuestionsFromFile(
       return {
         success: false,
         error: `Missing required columns: ${missingHeaders.join(
-          ", "
+          ", ",
         )}. Found columns: ${headers.join(", ")}`,
       };
     }
@@ -894,7 +928,7 @@ export async function importQuestionsFromFile(
           normalizedType = "short-answer";
         } else {
           errors.push(
-            `Row ${rowNum}: Unsupported question type "${row.question_type}". Use "multiple-choice", "rearrange", or "short-answer"`
+            `Row ${rowNum}: Unsupported question type "${row.question_type}". Use "multiple-choice", "rearrange", or "short-answer"`,
           );
           rowNum++;
           continue;
@@ -920,7 +954,7 @@ export async function importQuestionsFromFile(
         if (normalizedType === "multiple-choice") {
           if (!row.answer_options || !row.answer_options.trim()) {
             errors.push(
-              `Row ${rowNum}: Multiple-choice questions require answer_options`
+              `Row ${rowNum}: Multiple-choice questions require answer_options`,
             );
             rowNum++;
             continue;
@@ -933,7 +967,7 @@ export async function importQuestionsFromFile(
 
           if (options.length < 2) {
             errors.push(
-              `Row ${rowNum}: Multiple-choice questions need at least 2 options (found ${options.length})`
+              `Row ${rowNum}: Multiple-choice questions need at least 2 options (found ${options.length})`,
             );
             rowNum++;
             continue;
@@ -943,7 +977,7 @@ export async function importQuestionsFromFile(
             errors.push(
               `Row ${rowNum}: Answer "${
                 questionData.answer
-              }" is not in the answer_options. Options: ${options.join(", ")}`
+              }" is not in the answer_options. Options: ${options.join(", ")}`,
             );
             rowNum++;
             continue;
@@ -1006,18 +1040,18 @@ export async function importQuestionsFromFile(
         if (insertError || !insertedQuestion) {
           console.error(
             `[IMPORT] Failed to insert question ${i + 1}:`,
-            insertError
+            insertError,
           );
           failed++;
           uploadErrors.push(
-            `Question ${i + 1}: ${insertError?.message || "Failed to insert"}`
+            `Question ${i + 1}: ${insertError?.message || "Failed to insert"}`,
           );
           continue;
         }
 
         console.log(
           `[IMPORT] Inserted question ${i + 1}, ID:`,
-          insertedQuestion.question_id
+          insertedQuestion.question_id,
         );
 
         // Link to lesson
@@ -1031,12 +1065,12 @@ export async function importQuestionsFromFile(
         if (linkError) {
           console.error(
             `[IMPORT] Failed to link question ${i + 1}:`,
-            linkError
+            linkError,
           );
           uploadErrors.push(
             `Question ${i + 1}: Created but failed to link to lesson: ${
               linkError.message
-            }`
+            }`,
           );
         }
 
@@ -1112,7 +1146,7 @@ export async function generateQuestionLLM(params: {
   if (clsRowsLLM.length > 1) {
     console.error(
       "generateQuestionLLM: multiple classes matched",
-      cleanedClassName
+      cleanedClassName,
     );
     return {
       success: false,
@@ -1128,8 +1162,8 @@ export async function generateQuestionLLM(params: {
   const topic = params.topic
     ? params.topic
     : params.lessonName
-    ? decodeURIComponent(params.lessonName).replace(/-/g, " ").trim()
-    : "Intro CS";
+      ? decodeURIComponent(params.lessonName).replace(/-/g, " ").trim()
+      : "Intro CS";
 
   let examples: Array<{
     question_type: string;
@@ -1180,7 +1214,7 @@ export async function generateQuestionLLM(params: {
     console.error(
       "generateQuestionLLM: LLM endpoint failed",
       resp.status,
-      preview
+      preview,
     );
     return { success: false, error: `LLM endpoint failed ${resp.status}` };
   }
@@ -1237,7 +1271,7 @@ const processRearrangeOptionsData = (options: any[], snippet: string) => {
   // Filter out only tokens that aren't distractors (have valid positions in the snippet)
   const nonDistractorOptions = options.filter(
     (option) =>
-      !option.isDistractor && option.position && option.position.length >= 2
+      !option.isDistractor && option.position && option.position.length >= 2,
   );
 
   // If we don't have any non-distractor tokens with positions, return simple tokens
@@ -1258,8 +1292,8 @@ const processRearrangeOptionsData = (options: any[], snippet: string) => {
       optionsIncludingStartAndEnd.flatMap((option) => {
         const [start, end] = option.position || [];
         return [start, end].filter((pos) => pos !== undefined);
-      })
-    )
+      }),
+    ),
   ).sort((a, b) => a - b);
 
   // Create slices from the positions
