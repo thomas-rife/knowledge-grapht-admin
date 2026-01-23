@@ -99,42 +99,69 @@ export const QuestionContextProvider = ({
     questionID?: number;
     image_url?: string | null;
   }) => {
-    if (lessonName) {
-      // Debug one-liner (shows in browser console)
-      // console.log('[CTX] submitQuestion -> image_url:', image_url)
+    const finalImageUrl = (() => {
+      const candidate = typeof image_url === "string" ? image_url : imageUrl;
+      return typeof candidate === "string" && candidate.trim()
+        ? candidate.trim()
+        : null;
+    })();
 
-      return await createNewQuestion(lessonName!, className, {
-        questionType, // from context state
+    console.log("=== submitQuestion DEBUG ===");
+    console.log("questionID:", questionID);
+    console.log("questionType:", questionType);
+    console.log("questionPrompt:", questionPrompt);
+    console.log("questionSnippet:", questionSnippet);
+    console.log("topicsCovered:", topicsCovered);
+    console.log("questionOptions (raw):", questionOptions);
+    console.log("correctAnswer:", correctAnswer);
+    console.log("finalImageUrl:", finalImageUrl);
+
+    // UPDATE existing question
+    if (questionID) {
+      console.log(
+        "UPDATE PATH - calling updateQuestion with questionID:",
+        questionID,
+      );
+
+      const result = await updateQuestion(questionID, {
+        questionType: questionType,
         prompt: questionPrompt,
         snippet: questionSnippet,
         topics: topicsCovered,
-        answerOptions: questionOptions,
+        answerOptions: questionOptions, // Send raw - let updateQuestion handle it
         answer: correctAnswer,
-        image_url: (() => {
-          const candidate =
-            typeof image_url === "string" ? image_url : imageUrl;
-          return typeof candidate === "string" && candidate.trim()
-            ? candidate.trim()
-            : null;
-        })(),
-        // is_ai_generated: false, // optional flag if you track this
-      });
+        image_url: finalImageUrl,
+      } as any);
+
+      console.log("updateQuestion result:", result);
+      return result;
     }
 
-    alert("Update functionality is being reworked. It will be back soon!");
-    return {
-      success: false,
-      error: "Update functionality is being reworked. It will be back soon!",
-    };
+    // CREATE new question
+    console.log("CREATE PATH - calling createNewQuestion");
 
-    // return await updateQuestion(questionID!, {
-    //   questionType,
-    //   prompt: questionPrompt,
-    //   snippet: questionSnippet,
-    //   topics: topicsCovered,
-    //   answerOptions: questionOptions,
-    //   answer: correctAnswer,
-    // })
+    // For creation, format options as objects
+    const formattedForCreation = questionOptions.map((opt, i) => {
+      if (typeof opt === "object" && opt !== null) {
+        return opt;
+      }
+      return { [`option${i + 1}`]: String(opt) };
+    });
+
+    console.log("formattedForCreation:", formattedForCreation);
+
+    const result = await createNewQuestion(lessonName!, className, {
+      questionType,
+      prompt: questionPrompt,
+      snippet: questionSnippet,
+      topics: topicsCovered,
+      answerOptions: formattedForCreation,
+      answer: correctAnswer,
+      image_url: finalImageUrl,
+    } as any);
+
+    console.log("createNewQuestion result:", result);
+    return result;
   };
 
   return (
