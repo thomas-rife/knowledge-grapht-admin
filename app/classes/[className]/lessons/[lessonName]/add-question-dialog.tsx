@@ -1,4 +1,4 @@
-'use client'
+"use client";
 
 import {
   type SelectChangeEvent,
@@ -16,18 +16,18 @@ import {
   Fade,
   TextField,
   Box,
-} from '@mui/material'
-import { Close } from '@mui/icons-material'
-import { type Dispatch, type SetStateAction, useState, useEffect } from 'react'
-import RearrangeQuestion from '@/components/question-types/rearrange'
-import MultipleChoiceQuestion from '@/components/question-types/multiple-choice'
-import { useQuestionContext } from '@/contexts/question-context'
-import { useParams } from 'next/navigation'
+} from "@mui/material";
+import { Close } from "@mui/icons-material";
+import { type Dispatch, type SetStateAction, useState, useEffect } from "react";
+import RearrangeQuestion from "@/components/question-types/rearrange";
+import MultipleChoiceQuestion from "@/components/question-types/multiple-choice";
+import { useQuestionContext } from "@/contexts/question-context";
+import { useParams } from "next/navigation";
 
 const componentMap: { [key: string]: JSX.Element } = {
-  ['multiple-choice']: <MultipleChoiceQuestion />,
+  ["multiple-choice"]: <MultipleChoiceQuestion />,
   // ['rearrange']: <RearrangeQuestion />,
-}
+};
 
 const AddQuestionDialog = ({
   lessonName,
@@ -36,84 +36,101 @@ const AddQuestionDialog = ({
   setAlertOpen,
   setRefreshGrid,
 }: {
-  lessonName: string
-  open: boolean
-  setOpen: Dispatch<SetStateAction<boolean>>
-  setAlertOpen: Dispatch<SetStateAction<boolean>>
-  setRefreshGrid: Dispatch<SetStateAction<number>>
+  lessonName: string;
+  open: boolean;
+  setOpen: Dispatch<SetStateAction<boolean>>;
+  setAlertOpen: Dispatch<SetStateAction<boolean>>;
+  setRefreshGrid: Dispatch<SetStateAction<number>>;
 }) => {
-  const [error, setError] = useState<boolean>(false)
-  const { questionType, questionID, setQuestionType, submitQuestion, resetStates } =
-    useQuestionContext()
-  const [buttonOperation, setButtonOperation] = useState<'Add Question' | 'Update Question'>(
-    'Add Question'
-  )
-  const [imageUrl, setImageUrl] = useState<string>('')
+  const [error, setError] = useState<boolean>(false);
+  const {
+    questionType,
+    questionID,
+    setQuestionType,
+    submitQuestion,
+    resetStates,
+    imageUrl,
+    setImageUrl,
+  } = useQuestionContext();
+  const [buttonOperation, setButtonOperation] = useState<
+    "Add Question" | "Update Question"
+  >("Add Question");
 
   // Read route params and normalize to match DB names
-  const params = useParams() as { className?: string; lessonName?: string }
-  const classParam = params?.className ?? ''
-  const lessonParam = params?.lessonName ?? lessonName
-  const cleanedClassName = decodeURIComponent(classParam).replace(/-/g, ' ').trim()
-  const cleanedLessonName = decodeURIComponent(lessonParam).replace(/-/g, ' ').trim()
+  const params = useParams() as { className?: string; lessonName?: string };
+  const classParam = params?.className ?? "";
+  const lessonParam = params?.lessonName ?? lessonName;
+  const cleanedClassName = decodeURIComponent(classParam)
+    .replace(/-/g, " ")
+    .trim();
+  const cleanedLessonName = decodeURIComponent(lessonParam)
+    .replace(/-/g, " ")
+    .trim();
 
-  // Set default question type to multiple-choice when dialog opens
   useEffect(() => {
-    if (open) {
-      setQuestionType('multiple-choice')
+    if (!open) return;
+
+    // Only default when adding a new question
+    if (!questionID) {
+      setQuestionType("multiple-choice");
     }
-  }, [open, setQuestionType])
+  }, [open, questionID, setQuestionType]);
 
   const handleDialogClose = () => {
-    setOpen(false)
-    resetStates()
-    setButtonOperation('Add Question')
-    setImageUrl('')
-  }
+    setOpen(false);
+    resetStates();
+    setButtonOperation("Add Question");
+  };
 
   const handleSelectQuestionType = (e: SelectChangeEvent<string>) => {
-    setQuestionType(e.target.value)
-  }
+    setQuestionType(e.target.value);
+  };
 
   const submitForm = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
+    e.preventDefault();
 
     const payload = {
       lessonName: cleanedLessonName,
       className: cleanedClassName,
-      ...(buttonOperation === 'Update Question' ? { questionID: questionID! } : {}),
+      ...(buttonOperation === "Update Question"
+        ? { questionID: questionID! }
+        : {}),
       image_url: imageUrl.trim() || null,
-    }
-    console.log(payload, payload.image_url)
+    };
+    console.log(payload, payload.image_url);
 
-    const response = await submitQuestion(payload)
+    const response = await submitQuestion(payload);
 
     if (!response.success) {
-      setError(true)
-      return
+      setError(true);
+      return;
     }
 
-    handleDialogClose()
-    setRefreshGrid(prev => prev + 1)
-    setAlertOpen(true)
-  }
+    handleDialogClose();
+    setRefreshGrid((prev) => prev + 1);
+    setAlertOpen(true);
+  };
 
   useEffect(() => {
-    if (questionID) setButtonOperation('Update Question')
-  }, [open])
+    if (!open) return;
+    setButtonOperation(questionID ? "Update Question" : "Add Question");
+  }, [open, questionID]);
 
   return (
-    <Dialog open={open} PaperProps={{ component: 'form', onSubmit: submitForm }}>
+    <Dialog
+      open={open}
+      PaperProps={{ component: "form", onSubmit: submitForm }}
+    >
       <DialogTitle>{buttonOperation}</DialogTitle>
 
       <DialogContent
         sx={{
-          display: 'flex',
-          flexDirection: 'column',
+          display: "flex",
+          flexDirection: "column",
           gap: 2,
-          justifyContent: 'space-evenly',
-          alignItems: 'center',
-          minWidth: '400px',
+          justifyContent: "space-evenly",
+          alignItems: "center",
+          minWidth: "400px",
         }}
       >
         {/* Optional Question Type selector */}
@@ -140,24 +157,24 @@ const AddQuestionDialog = ({
         <TextField
           label="Image URL (optional)"
           value={imageUrl}
-          onChange={e => setImageUrl(e.target.value)}
+          onChange={(e) => setImageUrl(e.target.value)}
           fullWidth
         />
         {imageUrl?.trim() ? (
-          <Box sx={{ mt: 1, display: 'flex', justifyContent: 'center' }}>
+          <Box sx={{ mt: 1, display: "flex", justifyContent: "center" }}>
             <img
               src={imageUrl}
               alt="preview"
               style={{
                 maxHeight: 160,
-                maxWidth: '100%',
-                objectFit: 'contain',
+                maxWidth: "100%",
+                objectFit: "contain",
                 borderRadius: 4,
-                border: '1px solid #ccc',
+                border: "1px solid #ccc",
               }}
-              onError={e => {
-                const el = e.currentTarget as HTMLImageElement
-                el.style.display = 'none'
+              onError={(e) => {
+                const el = e.currentTarget as HTMLImageElement;
+                el.style.display = "none";
               }}
             />
           </Box>
@@ -177,7 +194,8 @@ const AddQuestionDialog = ({
               </IconButton>
             }
           >
-            Failed to {buttonOperation.toLowerCase()}. Please review your input and try again.
+            Failed to {buttonOperation.toLowerCase()}. Please review your input
+            and try again.
           </Alert>
         </Fade>
       </DialogContent>
@@ -187,7 +205,7 @@ const AddQuestionDialog = ({
         <Button type="submit">{buttonOperation}</Button>
       </DialogActions>
     </Dialog>
-  )
-}
+  );
+};
 
-export default AddQuestionDialog
+export default AddQuestionDialog;

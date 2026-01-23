@@ -23,6 +23,8 @@ interface QuestionContextType {
   setCorrectAnswer: React.Dispatch<React.SetStateAction<string>>;
   topicsCovered: string[];
   setTopicsCovered: React.Dispatch<React.SetStateAction<string[]>>;
+  imageUrl: string;
+  setImageUrl: React.Dispatch<React.SetStateAction<string>>;
   submitQuestion: ({
     lessonName,
     questionID,
@@ -51,6 +53,8 @@ const initialContext: QuestionContextType = {
   setCorrectAnswer: () => {},
   topicsCovered: [],
   setTopicsCovered: () => {},
+  imageUrl: "",
+  setImageUrl: () => {},
   submitQuestion: async () => ({ success: false, error: "Not implemented" }),
   resetStates: () => {},
 };
@@ -71,6 +75,7 @@ export const QuestionContextProvider = ({
   const [questionOptions, setQuestionOptions] = useState<any>([]);
   const [correctAnswer, setCorrectAnswer] = useState("");
   const [topicsCovered, setTopicsCovered] = useState<string[]>([]);
+  const [imageUrl, setImageUrl] = useState("");
 
   const resetStates = () => {
     setQuestionID(null);
@@ -80,6 +85,7 @@ export const QuestionContextProvider = ({
     setQuestionOptions([]);
     setCorrectAnswer("");
     setTopicsCovered([]);
+    setImageUrl("");
   };
 
   const submitQuestion = async ({
@@ -104,10 +110,13 @@ export const QuestionContextProvider = ({
         topics: topicsCovered,
         answerOptions: questionOptions,
         answer: correctAnswer,
-        image_url:
-          typeof image_url === "string" && image_url.trim()
-            ? image_url.trim()
-            : null, // ✅ pass through
+        image_url: (() => {
+          const candidate =
+            typeof image_url === "string" ? image_url : imageUrl;
+          return typeof candidate === "string" && candidate.trim()
+            ? candidate.trim()
+            : null;
+        })(),
         // is_ai_generated: false, // optional flag if you track this
       });
     }
@@ -145,6 +154,8 @@ export const QuestionContextProvider = ({
         setCorrectAnswer,
         topicsCovered,
         setTopicsCovered,
+        imageUrl,
+        setImageUrl,
         submitQuestion,
         resetStates,
       }}

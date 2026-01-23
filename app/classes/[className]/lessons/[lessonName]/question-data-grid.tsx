@@ -103,6 +103,7 @@ const QuestionDataGrid = ({
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [importText, setImportText] = useState("");
   const [importing, setImporting] = useState(false);
+  const { setImageUrl } = useQuestionContext();
 
   const normalizeOptions = (arr: any[]): string[] => {
     if (!Array.isArray(arr)) return [];
@@ -125,7 +126,7 @@ const QuestionDataGrid = ({
           if (typeof v === "string" && v.trim() !== "") return v;
         }
         const stringProps = Object.entries(o).filter(
-          ([, v]) => typeof v === "string"
+          ([, v]) => typeof v === "string",
         );
         if (stringProps.length === 1) return String(stringProps[0][1]);
         try {
@@ -207,7 +208,7 @@ const QuestionDataGrid = ({
       if ((result.imported ?? 0) > 0) {
         const lessonQuestions = await getLessonQuestions(
           params.className,
-          params.lessonName
+          params.lessonName,
         );
         const tableRows = lessonQuestions.map(
           ({
@@ -230,7 +231,7 @@ const QuestionDataGrid = ({
               : "",
             answerColumn: answer,
             imageUrlColumn: image_url || "",
-          })
+          }),
         );
         setRows(tableRows);
       }
@@ -248,7 +249,7 @@ const QuestionDataGrid = ({
   const handleGenerateAI = async () => {
     if (rows.length < 3) {
       alert(
-        "Please add at least three questions in this lesson before generating with AI."
+        "Please add at least three questions in this lesson before generating with AI.",
       );
       return;
     }
@@ -263,7 +264,7 @@ const QuestionDataGrid = ({
 
       const lessonId = await getLessonIdByName(
         params.className,
-        params.lessonName
+        params.lessonName,
       );
 
       if (!lessonId) {
@@ -355,10 +356,10 @@ const QuestionDataGrid = ({
         (tRaw.includes("multiple") || tRaw.includes("choice")
           ? "multiple_choice"
           : tRaw.includes("short")
-          ? "short_answer"
-          : tRaw.includes("rearrange")
-          ? "rearrange"
-          : null);
+            ? "short_answer"
+            : tRaw.includes("rearrange")
+              ? "rearrange"
+              : null);
 
       if (!normalizedType) {
         alert("Unsupported question type.");
@@ -415,7 +416,7 @@ const QuestionDataGrid = ({
       const res = await createNewQuestion(
         params.lessonName,
         params.className,
-        payload
+        payload,
       );
       if (!res?.success) {
         alert("Failed to save question.");
@@ -424,7 +425,7 @@ const QuestionDataGrid = ({
 
       const lessonQuestions = await getLessonQuestions(
         params.className,
-        params.lessonName
+        params.lessonName,
       );
       const tableRows = lessonQuestions.map(
         ({
@@ -447,7 +448,7 @@ const QuestionDataGrid = ({
             : "",
           answerColumn: answer,
           // imageUrlColumn: image_url || '',
-        })
+        }),
       );
       setRows(tableRows);
       setPreviewOpen(false);
@@ -470,6 +471,7 @@ const QuestionDataGrid = ({
   const handleEditClick = (id: number) => () => {
     const row = rows?.find((row) => row.id === id);
     if (!row) return;
+
     const {
       id: rowId,
       promptColumn,
@@ -478,15 +480,32 @@ const QuestionDataGrid = ({
       unitsCoveredColumn,
       optionsColumn,
       answerColumn,
-      rawOptionsData,
       imageUrlColumn,
-    } = row!;
+    } = row;
+
     setQuestionID(rowId);
     setQuestionType(questionTypeColumn);
     setQuestionPrompt(promptColumn);
     setQuestionSnippet(snippetColumn);
     setCorrectAnswer(answerColumn);
-    setTopicsCovered(unitsCoveredColumn ? unitsCoveredColumn.split(", ") : []);
+
+    setQuestionOptions(
+      optionsColumn
+        ? optionsColumn
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [],
+    );
+
+    setTopicsCovered(
+      unitsCoveredColumn
+        ? unitsCoveredColumn.split(",").map((s) => s.trim())
+        : [],
+    );
+
+    setImageUrl(imageUrlColumn || "");
+
     setOpen(true);
   };
 
@@ -496,7 +515,7 @@ const QuestionDataGrid = ({
       const res = await deleteQuestionFromLesson(
         params.className,
         params.lessonName,
-        id
+        id,
       );
       if (!res?.success) {
         alert(res?.error || "Failed to delete question");
@@ -505,7 +524,7 @@ const QuestionDataGrid = ({
       }
       const lessonQuestions = await getLessonQuestions(
         params.className,
-        params.lessonName
+        params.lessonName,
       );
       const tableRows = lessonQuestions.map(
         ({
@@ -528,7 +547,7 @@ const QuestionDataGrid = ({
             : "",
           answerColumn: answer,
           imageUrlColumn: image_url || "",
-        })
+        }),
       );
       setRows(tableRows);
       handleConfimationDialogClose();
@@ -541,7 +560,7 @@ const QuestionDataGrid = ({
     const fetchLessonQuestions = async () => {
       const lessonQuestions = await getLessonQuestions(
         params.className,
-        params.lessonName
+        params.lessonName,
       );
       const tableRows = lessonQuestions.map(
         ({
@@ -564,7 +583,7 @@ const QuestionDataGrid = ({
             : "",
           answerColumn: answer,
           imageUrlColumn: image_url || "",
-        })
+        }),
       );
       setRows(tableRows);
       setDataLoading(false);

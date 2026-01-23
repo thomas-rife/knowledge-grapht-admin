@@ -440,7 +440,6 @@ export async function createNewQuestion(
   }
 
   // Resolve lesson id through the class_lesson_bank to ensure it belongs to the class
-  // Resolve lesson id through the class_lesson_bank to ensure it belongs to the class
   const { data: links, error: lessonIDError } = await supabase
     .from("class_lesson_bank")
     .select("lesson_id, lessons!inner(lesson_id, name)") // Use inner join
