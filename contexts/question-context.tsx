@@ -106,23 +106,8 @@ export const QuestionContextProvider = ({
         : null;
     })();
 
-    console.log("=== submitQuestion DEBUG ===");
-    console.log("questionID:", questionID);
-    console.log("questionType:", questionType);
-    console.log("questionPrompt:", questionPrompt);
-    console.log("questionSnippet:", questionSnippet);
-    console.log("topicsCovered:", topicsCovered);
-    console.log("questionOptions (raw):", questionOptions);
-    console.log("correctAnswer:", correctAnswer);
-    console.log("finalImageUrl:", finalImageUrl);
-
     // UPDATE existing question
     if (questionID) {
-      console.log(
-        "UPDATE PATH - calling updateQuestion with questionID:",
-        questionID,
-      );
-
       const result = await updateQuestion(questionID, {
         questionType: questionType,
         prompt: questionPrompt,
@@ -133,22 +118,18 @@ export const QuestionContextProvider = ({
         image_url: finalImageUrl,
       } as any);
 
-      console.log("updateQuestion result:", result);
       return result;
     }
 
     // CREATE new question
-    console.log("CREATE PATH - calling createNewQuestion");
 
     // For creation, format options as objects
-    const formattedForCreation = questionOptions.map((opt, i) => {
+    const formattedForCreation = questionOptions.map((opt: any, i: any) => {
       if (typeof opt === "object" && opt !== null) {
         return opt;
       }
       return { [`option${i + 1}`]: String(opt) };
     });
-
-    console.log("formattedForCreation:", formattedForCreation);
 
     const result = await createNewQuestion(lessonName!, className, {
       questionType,
@@ -160,7 +141,6 @@ export const QuestionContextProvider = ({
       image_url: finalImageUrl,
     } as any);
 
-    console.log("createNewQuestion result:", result);
     return result;
   };
 
