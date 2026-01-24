@@ -484,9 +484,21 @@ const QuestionDataGrid = ({
     setQuestionType(questionTypeColumn);
     setQuestionPrompt(promptColumn);
     setQuestionSnippet(snippetColumn);
-    setCorrectAnswer(answerColumn);
 
-    setQuestionOptions(Array.isArray(optionsRaw) ? optionsRaw : []);
+    const formattedOptions = Array.isArray(optionsRaw)
+      ? optionsRaw.map((opt, i) => {
+          if (typeof opt === "object" && opt !== null) {
+            return opt;
+          }
+          return { [`option${i + 1}`]: String(opt) };
+        })
+      : [];
+
+    setQuestionOptions(formattedOptions);
+
+    setTimeout(() => {
+      setCorrectAnswer(answerColumn);
+    }, 0);
 
     setTopicsCovered(
       unitsCoveredColumn
