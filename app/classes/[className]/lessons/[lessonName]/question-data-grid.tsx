@@ -229,6 +229,7 @@ const QuestionDataGrid = ({
             optionsColumn: Array.isArray(answer_options)
               ? answer_options.join(", ")
               : "",
+            optionsRaw: answer_options || [],
             answerColumn: answer,
             imageUrlColumn: image_url || "",
           }),
@@ -307,11 +308,6 @@ const QuestionDataGrid = ({
         if (a && typeof a.label === "string") return a.label;
         return toStr(a);
       })();
-      // const normalizeType = (t: any, opts: string[]): "multiple_choice" => {
-      //   const s =
-      //     typeof t === "string" ? t.toLowerCase().replace(/[-\s]+/g, "_") : "";
-      //   return "multiple_choice";
-      // };
 
       setDraftType("multiple_choice");
       setDraftPrompt(toStr(q.prompt));
@@ -446,6 +442,7 @@ const QuestionDataGrid = ({
           optionsColumn: Array.isArray(answer_options)
             ? answer_options.join(", ")
             : "",
+          optionsRaw: answer_options || [],
           answerColumn: answer,
           // imageUrlColumn: image_url || '',
         }),
@@ -478,7 +475,7 @@ const QuestionDataGrid = ({
       questionTypeColumn,
       snippetColumn,
       unitsCoveredColumn,
-      optionsColumn,
+      optionsRaw,
       answerColumn,
       imageUrlColumn,
     } = row;
@@ -489,14 +486,7 @@ const QuestionDataGrid = ({
     setQuestionSnippet(snippetColumn);
     setCorrectAnswer(answerColumn);
 
-    setQuestionOptions(
-      optionsColumn
-        ? optionsColumn
-            .split(",")
-            .map((s: string) => s.trim())
-            .filter(Boolean)
-        : [],
-    );
+    setQuestionOptions(Array.isArray(optionsRaw) ? optionsRaw : []);
 
     setTopicsCovered(
       unitsCoveredColumn
@@ -545,6 +535,7 @@ const QuestionDataGrid = ({
           optionsColumn: Array.isArray(answer_options)
             ? answer_options.join(", ")
             : "",
+          optionsRaw: answer_options || [],
           answerColumn: answer,
           imageUrlColumn: image_url || "",
         }),
@@ -581,6 +572,7 @@ const QuestionDataGrid = ({
           optionsColumn: Array.isArray(answer_options)
             ? answer_options.join(", ")
             : "",
+          optionsRaw: answer_options || [],
           answerColumn: answer,
           imageUrlColumn: image_url || "",
         }),
