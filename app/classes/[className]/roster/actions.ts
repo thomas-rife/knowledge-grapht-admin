@@ -50,7 +50,7 @@ export const enrolledStudents = async (className: string) => {
     success: true,
     students: data.map((student) => ({
       student_id: student.student_id,
-      display_name: student.students[0].display_name,
+      student_name: student.students[0].display_name,
     })),
   };
 };
