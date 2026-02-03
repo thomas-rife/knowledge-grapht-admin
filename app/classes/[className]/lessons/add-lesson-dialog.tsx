@@ -44,54 +44,73 @@ const AddLessonDialog = ({
   const [newLessonName, setNewLessonName] = useState<string>("");
   const [lessonTopics, setLessonTopics] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
-  // TODO: make this a set of strings
   const [selectedLessonTopics, setSelectedLessonTopics] = useState<string[]>(
-    []
+    [],
   );
+  const [searchTerm, setSearchTerm] = useState("");
   const [buttonOperation, setButtonOperation] = useState<
     "Add Lesson" | "Update Lesson"
   >("Add Lesson");
 
+  const [nameError, setNameError] = useState<string>("");
+
   const handleLessonDiaglogClose = () => {
     setOpen(false);
     setNewLessonName("");
-    setSelectedLessonTopics([]); // add
+    setSelectedLessonTopics([]);
     setButtonOperation("Add Lesson");
     resetPrevLessonData(null);
+    setNameError("");
   };
 
   const handleLessonTopicChange = (
-    e: SelectChangeEvent<typeof selectedLessonTopics>
+    e: SelectChangeEvent<typeof selectedLessonTopics>,
   ) => {
     setSelectedLessonTopics(
       typeof e.target.value === "string"
         ? e.target.value.split(",")
-        : e.target.value
+        : e.target.value,
     );
+  };
+
+  const handleLessonNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    const sanitized = value.replace(/[^a-zA-Z0-9\s()]/g, "");
+    setNewLessonName(sanitized);
   };
 
   const submitForm = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (isSaving) return;
+
+    // Validate before submitting
+    const cleanedLessonName = newLessonName.replace(/[:]/g, "-").trim();
+
+    if (!cleanedLessonName) {
+      setNameError("Lesson name is required");
+      return;
+    }
+
+    if (/[^a-zA-Z0-9\s()]/.test(cleanedLessonName)) {
+      setNameError("Only letters, numbers, parentheses and spaces allowed");
+      return;
+    }
+
+    const cleanedTopics = Array.from(
+      new Set(
+        (selectedLessonTopics || [])
+          .map((t) => String(t).trim())
+          .filter(Boolean),
+      ),
+    );
+
+    if (cleanedTopics.length === 0) {
+      alert("Select at least one topic");
+      return;
+    }
+
     setIsSaving(true);
     try {
-      const cleanedLessonName = newLessonName.replace(/[:]/g, "-").trim();
-      const cleanedTopics = Array.from(
-        new Set(
-          (selectedLessonTopics || [])
-            .map((t) => String(t).trim())
-            .filter(Boolean)
-        )
-      );
-      if (!cleanedLessonName) {
-        alert("Lesson name is required");
-        return;
-      }
-      if (cleanedTopics.length === 0) {
-        alert("Select at least one topic");
-        return;
-      }
-
       const addingLesson = buttonOperation === "Add Lesson";
       const response = addingLesson
         ? await createNewLesson(className, {
@@ -108,7 +127,7 @@ const AddLessonDialog = ({
         alert(
           addingLesson
             ? "Lesson added successfully"
-            : "Lesson updated successfully"
+            : "Lesson updated successfully",
         );
         setRefreshGrid((prev) => prev + 1);
         return;
@@ -116,7 +135,7 @@ const AddLessonDialog = ({
       alert(
         `Error ${addingLesson ? "adding" : "updating"} lesson${
           response?.error ? `: ${response.error}` : ""
-        }`
+        }`,
       );
     } finally {
       setIsSaving(false);
@@ -156,13 +175,16 @@ const AddLessonDialog = ({
     fetchLessonTopics();
   }, [className]);
 
+  const filteredItems = lessonTopics.filter((lessonTopics) =>
+    lessonTopics.toLowerCase().includes(searchTerm.toLowerCase()),
+  );
+
   return (
     <Dialog
       open={open}
       PaperProps={{ component: "form", onSubmit: submitForm }}
       disableEscapeKeyDown={isSaving}
     >
-      {" "}
       <DialogTitle>Add Lesson</DialogTitle>
       <DialogContent>
         <Box
@@ -181,8 +203,8 @@ const AddLessonDialog = ({
             id="name"
             label="Lesson Name"
             value={newLessonName}
-            onChange={(e) => setNewLessonName(e.target.value)}
-            // variant="standard"
+            onChange={handleLessonNameChange}
+            error={!!nameError}
           />
           <FormControl fullWidth>
             <InputLabel id="lesson-topics">Lesson Topics</InputLabel>
@@ -192,9 +214,17 @@ const AddLessonDialog = ({
               labelId="lesson-topics"
               value={selectedLessonTopics}
               onChange={handleLessonTopicChange}
-              renderValue={(selected) => (selected as string[]).join(", ")} //   variant="standard"
+              renderValue={(selected) => (selected as string[]).join(", ")}
             >
+              {/* <TextField
+                label="Search"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search topics..."
+              /> */}
+
               {lessonTopics.map((topic) => (
+                // {filteredTopics.map((topic) => (
                 <MenuItem key={topic} value={topic}>
                   <Checkbox checked={selectedLessonTopics.includes(topic)} />
                   <ListItemText primary={topic} />
