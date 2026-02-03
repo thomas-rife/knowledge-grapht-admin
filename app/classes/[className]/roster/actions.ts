@@ -2,6 +2,11 @@
 
 import { createClient } from "@/utils/supabase/server";
 
+type EnrollmentWithStudent = {
+  student_id: string;
+  students: { display_name: string } | { display_name: string }[] | null;
+};
+
 export const enrolledStudents = async (className: string) => {
   const supabase = createClient();
 
@@ -33,13 +38,14 @@ export const enrolledStudents = async (className: string) => {
     .from("enrollments")
     .select(
       `
-    student_id,
-    students (
-      display_name
+      student_id,
+      students!inner (
+        display_name
+      )
+    `,
     )
-  `,
-    )
-    .eq("class_id", classID.class_id);
+    .eq("class_id", classID.class_id)
+    .returns<EnrollmentWithStudent[]>();
 
   if (error) {
     console.error("Error fetching enrolled students: ", error);
@@ -48,9 +54,15 @@ export const enrolledStudents = async (className: string) => {
 
   return {
     success: true,
-    students: data.map((student) => ({
-      student_id: student.student_id,
-      student_name: student.students[0].display_name,
-    })),
+    students: data.map((student) => {
+      const displayName = Array.isArray(student.students)
+        ? student.students[0]?.display_name
+        : student.students?.display_name;
+
+      return {
+        student_id: student.student_id,
+        student_name: displayName ?? "",
+      };
+    }),
   };
 };
