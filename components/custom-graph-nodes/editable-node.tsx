@@ -1,4 +1,4 @@
-'use client'
+"use client";
 
 import {
   Paper,
@@ -12,14 +12,15 @@ import {
   DialogContent,
   DialogActions,
   Tooltip,
-} from '@mui/material'
-import { useState } from 'react'
-import { Handle, Position } from '@xyflow/react'
-import { useNodeLabelUpdate } from '@/hooks/knowledgeGraphHooks'
+  Box,
+} from "@mui/material";
+import { useState } from "react";
+import { Handle, Position } from "@xyflow/react";
+import { useNodeLabelUpdate } from "@/hooks/knowledgeGraphHooks";
 
 interface ReactFlowData {
-  reactFlowNodes: Array<{ id: string }>
-  reactFlowEdges: Array<{ source: string; target: string }>
+  reactFlowNodes: Array<{ id: string }>;
+  reactFlowEdges: Array<{ source: string; target: string }>;
 }
 
 const EditableNode = ({
@@ -27,126 +28,178 @@ const EditableNode = ({
   data,
   isConnectable,
 }: {
-  id: string
+  id: string;
   data: {
-    label: string
-    setReactFlowData: (callback: (prev: ReactFlowData) => ReactFlowData) => void
-  }
-  isConnectable: boolean
+    label: string;
+    accuracy?: number | null;
+    attempts?: number;
+    readOnly?: boolean;
+    setReactFlowData: (
+      callback: (prev: ReactFlowData) => ReactFlowData,
+    ) => void;
+  };
+  isConnectable: boolean;
 }) => {
-  const [isMenuOpen, setIsMenuOpen] = useState(false)
-  const [anchorElement, setAnchorElement] = useState<HTMLElement | null>(null)
-  const [openNodeDialog, setOpenNodeDialog] = useState(false)
-  const [nodeName, setNodeName] = useState(data.label)
-  const [isValid, setIsValid] = useState(true)
-  const [errorMessage, setErrorMessage] = useState('')
-
-  const updateNodeLabel = useNodeLabelUpdate(data.setReactFlowData, id, nodeName)
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [anchorElement, setAnchorElement] = useState<HTMLElement | null>(null);
+  const [openNodeDialog, setOpenNodeDialog] = useState(false);
+  const [nodeName, setNodeName] = useState(data.label);
+  const [isValid, setIsValid] = useState(true);
+  const [errorMessage, setErrorMessage] = useState("");
+  const updateNodeLabel = useNodeLabelUpdate(
+    data.setReactFlowData,
+    id,
+    nodeName,
+  );
 
   const handleClick = (event: React.MouseEvent<HTMLElement>) => {
-    setIsMenuOpen(true)
-    setAnchorElement(event.currentTarget)
-  }
+    setIsMenuOpen(true);
+    setAnchorElement(event.currentTarget);
+  };
 
   const validateNodeName = (name: string) => {
     if (name.trim().length === 0) {
-      setIsValid(false)
-      setErrorMessage('Node name cannot be empty')
-      return false
+      setIsValid(false);
+      setErrorMessage("Node name cannot be empty");
+      return false;
     }
     if (name.length > 100) {
-      setIsValid(false)
-      setErrorMessage('Node name must be less than 100 characters')
-      return false
+      setIsValid(false);
+      setErrorMessage("Node name must be less than 100 characters");
+      return false;
     }
-    setIsValid(true)
-    setErrorMessage('')
-    return true
-  }
+    setIsValid(true);
+    setErrorMessage("");
+    return true;
+  };
 
   const handleSave = () => {
     if (validateNodeName(nodeName)) {
-      updateNodeLabel()
-      handleMenuClose()
-      handleCloseDialog()
+      updateNodeLabel();
+      handleMenuClose();
+      handleCloseDialog();
     }
-  }
+  };
 
   const handleMenuClose = () => {
-    setIsMenuOpen(false)
-    setAnchorElement(null)
-  }
+    setIsMenuOpen(false);
+    setAnchorElement(null);
+  };
 
   const handleEditNode = () => {
-    setOpenNodeDialog(true)
-  }
+    setOpenNodeDialog(true);
+  };
 
   const handleDeleteNode = () => {
     data.setReactFlowData((prev: ReactFlowData) => {
-      const newNodes = prev.reactFlowNodes.filter((node: { id: string }) => node.id !== id)
+      const newNodes = prev.reactFlowNodes.filter(
+        (node: { id: string }) => node.id !== id,
+      );
       const newEdges = prev.reactFlowEdges.filter(
-        (edge: { source: string; target: string }) => edge.source !== id && edge.target !== id
-      )
-      return { reactFlowNodes: newNodes, reactFlowEdges: newEdges }
-    })
-  }
+        (edge: { source: string; target: string }) =>
+          edge.source !== id && edge.target !== id,
+      );
+      return { reactFlowNodes: newNodes, reactFlowEdges: newEdges };
+    });
+  };
 
-  const handleCloseDialog = () => setOpenNodeDialog(false)
+  const handleCloseDialog = () => setOpenNodeDialog(false);
+
+  const accuracyPercent =
+    data.accuracy != null ? Math.round(data.accuracy * 100) : null;
+
+  const getAccuracyColor = (percent: number) => {
+    if (percent >= 70) return "success.main";
+    if (percent >= 50) return "warning.main";
+    return "error.main";
+  };
 
   return (
-    <div className="editable-node" style={{ position: 'relative' }}>
+    <div className="editable-node" style={{ position: "relative" }}>
       <Handle
         type="target"
         position={Position.Top}
         isConnectable={isConnectable}
         className="node-handle top-handle"
         style={{
-          width: '8px',
-          height: '8px',
-          background: 'currentColor',
-          border: '1.5px solid',
-          borderColor: 'background.paper',
-          borderRadius: '50%',
-          transition: 'all 0.2s ease-out',
+          width: "8px",
+          height: "8px",
+          background: "currentColor",
+          border: "1.5px solid",
+          borderColor: "background.paper",
+          borderRadius: "50%",
+          transition: "all 0.2s ease-out",
           opacity: 0.6,
           zIndex: 1,
-          top: '-4px',
+          top: "-4px",
         }}
       />
 
-      <Tooltip title="Click to edit or delete" arrow placement="bottom" enterDelay={500}>
+      {accuracyPercent != null && data.attempts && data.attempts > 0 && (
+        <Box
+          sx={{
+            position: "absolute",
+            top: -8,
+            right: -8,
+            backgroundColor: getAccuracyColor(accuracyPercent),
+            color: "white",
+            borderRadius: "50%",
+            width: 36,
+            height: 36,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "0.75rem",
+            fontWeight: "bold",
+            border: "0px solid",
+            borderColor: "background.paper",
+            zIndex: 10,
+            boxShadow: 2,
+          }}
+        >
+          {accuracyPercent}%
+        </Box>
+      )}
+
+      <Tooltip
+        title="Click to edit or delete"
+        arrow
+        placement="bottom"
+        enterDelay={500}
+      >
         <Paper
           elevation={8}
-          onClick={e => handleClick(e)}
+          onClick={(e) => !data.readOnly && handleClick(e)}
           sx={{
             padding: 1.5,
-            display: 'flex',
-            flexWrap: 'wrap',
-            justifyContent: 'center',
-            alignItems: 'center',
-            minHeight: '3.5em',
-            minWidth: '12em',
-            borderRadius: '12px',
-            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-            border: '2px solid',
-            borderColor: 'divider',
-            animation: 'nodeEntrance 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
-            '&:hover': {
-              transform: 'scale(1.02)',
-              borderColor: 'primary.main',
-              borderWidth: '2px',
+            display: "flex",
+            flexWrap: "wrap",
+            justifyContent: "center",
+            alignItems: "center",
+            minHeight: "3.5em",
+            minWidth: "12em",
+            borderRadius: "12px",
+            transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+            border: "2px solid",
+            borderColor: "divider",
+            cursor: data.readOnly ? "default" : "pointer",
+            animation: "nodeEntrance 0.5s cubic-bezier(0.4, 0, 0.2, 1)",
+            "&:hover": {
+              transform: data.readOnly ? "none" : "scale(1.02)",
+              borderColor: data.readOnly ? "divider" : "primary.main",
+              borderWidth: "2px",
             },
-            '&:active': {
-              transform: 'scale(0.98)',
+            "&:active": {
+              transform: data.readOnly ? "none" : "scale(0.98)",
             },
-            '@keyframes nodeEntrance': {
-              '0%': {
+            "@keyframes nodeEntrance": {
+              "0%": {
                 opacity: 0,
-                transform: 'scale(0.8)',
+                transform: "scale(0.8)",
               },
-              '100%': {
+              "100%": {
                 opacity: 1,
-                transform: 'scale(1)',
+                transform: "scale(1)",
               },
             },
           }}
@@ -155,8 +208,8 @@ const EditableNode = ({
             variant="h6"
             sx={{
               fontWeight: 500,
-              textAlign: 'center',
-              wordBreak: 'break-word',
+              textAlign: "center",
+              wordBreak: "break-word",
             }}
           >
             {data.label}
@@ -164,35 +217,37 @@ const EditableNode = ({
         </Paper>
       </Tooltip>
 
-      <Menu
-        open={isMenuOpen}
-        onClose={handleMenuClose}
-        anchorEl={anchorElement}
-        PaperProps={{
-          elevation: 3,
-          sx: {
-            borderRadius: '8px',
-            minWidth: '120px',
-          },
-        }}
-      >
-        <MenuItem onClick={handleEditNode}>Edit</MenuItem>
-        <MenuItem onClick={handleDeleteNode} sx={{ color: 'error.main' }}>
-          Delete
-        </MenuItem>
-      </Menu>
+      {!data.readOnly && (
+        <Menu
+          open={isMenuOpen}
+          onClose={handleMenuClose}
+          anchorEl={anchorElement}
+          PaperProps={{
+            elevation: 3,
+            sx: {
+              borderRadius: "8px",
+              minWidth: "120px",
+            },
+          }}
+        >
+          <MenuItem onClick={handleEditNode}>Edit</MenuItem>
+          <MenuItem onClick={handleDeleteNode} sx={{ color: "error.main" }}>
+            Delete
+          </MenuItem>
+        </Menu>
+      )}
 
       <Dialog
         open={openNodeDialog}
         onClose={handleCloseDialog}
         PaperProps={{
           sx: {
-            borderRadius: '12px',
-            minWidth: '350px',
+            borderRadius: "12px",
+            minWidth: "350px",
           },
         }}
       >
-        <DialogTitle sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
+        <DialogTitle sx={{ borderBottom: "1px solid", borderColor: "divider" }}>
           Edit Node
         </DialogTitle>
         <DialogContent sx={{ pt: 2, pb: 2 }}>
@@ -201,9 +256,9 @@ const EditableNode = ({
             fullWidth
             label="Node Name"
             value={nodeName}
-            onChange={e => {
-              setNodeName(e.target.value)
-              validateNodeName(e.target.value)
+            onChange={(e) => {
+              setNodeName(e.target.value);
+              validateNodeName(e.target.value);
             }}
             error={!isValid}
             helperText={errorMessage || `${nodeName.length}/100 characters`}
@@ -213,12 +268,14 @@ const EditableNode = ({
             autoFocus
           />
         </DialogContent>
-        <DialogActions sx={{ p: 2, borderTop: '1px solid', borderColor: 'divider' }}>
+        <DialogActions
+          sx={{ p: 2, borderTop: "1px solid", borderColor: "divider" }}
+        >
           <Button
             onClick={handleCloseDialog}
             sx={{
-              borderRadius: '8px',
-              textTransform: 'none',
+              borderRadius: "8px",
+              textTransform: "none",
             }}
           >
             Cancel
@@ -228,8 +285,8 @@ const EditableNode = ({
             variant="contained"
             disabled={!isValid}
             sx={{
-              borderRadius: '8px',
-              textTransform: 'none',
+              borderRadius: "8px",
+              textTransform: "none",
             }}
           >
             Save Changes
@@ -244,15 +301,15 @@ const EditableNode = ({
         isConnectable={isConnectable}
         className="node-handle bottom-handle"
         style={{
-          width: '8px',
-          height: '8px',
-          background: 'currentColor',
-          border: '1.5px solid',
-          borderColor: 'background.paper',
-          borderRadius: '50%',
-          transition: 'all 0.2s ease-out',
+          width: "8px",
+          height: "8px",
+          background: "currentColor",
+          border: "1.5px solid",
+          borderColor: "background.paper",
+          borderRadius: "50%",
+          transition: "all 0.2s ease-out",
           opacity: 0.6,
-          bottom: '-4px',
+          bottom: "-4px",
         }}
       />
 
@@ -272,7 +329,7 @@ const EditableNode = ({
         }
       `}</style>
     </div>
-  )
-}
+  );
+};
 
-export default EditableNode
+export default EditableNode;
