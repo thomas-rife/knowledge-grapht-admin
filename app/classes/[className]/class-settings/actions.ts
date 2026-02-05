@@ -56,7 +56,7 @@ export const createClassCode = async (className: string) => {
   // create a 6 character code
   const code = Math.random().toString(36).substring(2, 8).toUpperCase();
   const expiresAt = new Date(
-    Date.now() + 14 * 24 * 60 * 60 * 1000
+    Date.now() + 112 * 24 * 60 * 60 * 1000,
   ).toISOString();
   console.log("Code: ", code);
 
