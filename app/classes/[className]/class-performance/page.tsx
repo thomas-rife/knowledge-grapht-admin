@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useContext } from "react";
 import { Paper, Typography, Box, styled, Chip, Grid } from "@mui/material";
 import {
   Chart as ChartJS,
@@ -14,6 +14,17 @@ import {
 } from "chart.js";
 import { Bar, Doughnut } from "react-chartjs-2";
 import { createClient } from "@/utils/supabase/client";
+import "@xyflow/react/dist/style.css";
+import {
+  ReactFlow,
+  Background,
+  MiniMap,
+  type Node,
+  type Edge,
+} from "@xyflow/react";
+import { getKnowledgeGraphData } from "@/app/classes/[className]/knowledge-graph/actions";
+import EditableNode from "@/components/custom-graph-nodes/editable-node";
+import { ViewModeContext } from "@/contexts/viewmode-context";
 
 ChartJS.register(
   CategoryScale,
@@ -22,7 +33,7 @@ ChartJS.register(
   Title,
   Tooltip,
   Legend,
-  ArcElement
+  ArcElement,
 );
 
 const StatsCard = styled(Paper)(({ theme }) => ({
@@ -43,6 +54,8 @@ const formatPercentage = (decimal: number): string => {
   return `${(decimal * 100).toFixed(1)}%`;
 };
 
+const nodeTypes = { editableNode: EditableNode };
+
 const ClassPerformance = () => {
   type TopicStats = {
     topic: string;
@@ -62,7 +75,7 @@ const ClassPerformance = () => {
     correct: number;
     accuracy: number;
   };
-
+  const { settings } = useContext(ViewModeContext);
   const [topicStats, setTopicStats] = useState<TopicStats[]>([]);
   const [lessonStats, setLessonStats] = useState<LessonStats[]>([]);
   const [dailySeries, setDailySeries] = useState<DailyPoint[]>([]);
@@ -70,6 +83,9 @@ const ClassPerformance = () => {
   const [overallAccuracy, setOverallAccuracy] = useState(0);
   const [studentsCount, setStudentsCount] = useState(0);
   const [topReviewTopics, setTopReviewTopics] = useState<string[]>([]);
+  const [graphNodes, setGraphNodes] = useState<Node[]>([]);
+  const [graphEdges, setGraphEdges] = useState<Edge[]>([]);
+  const [graphLoaded, setGraphLoaded] = useState(false);
 
   useEffect(() => {
     const run = async () => {
@@ -98,6 +114,9 @@ const ClassPerformance = () => {
         setStudentsCount(0);
         return;
       }
+      setGraphNodes([]);
+      setGraphEdges([]);
+      setGraphLoaded(true);
 
       const classId = cls.class_id as number;
 
@@ -122,14 +141,15 @@ const ClassPerformance = () => {
         answered_at: string | null;
       }>;
 
-      // Attempts: prefer server count (handles RLS/pagination), fallback to returned length
       const attempts =
-        typeof answersCount === "number" ? answersCount : ansRows?.length ?? 0;
+        typeof answersCount === "number"
+          ? answersCount
+          : (ansRows?.length ?? 0);
       setOverallAttempts(attempts);
 
       // Unique students
       let studentSet = new Set(
-        ansRows.map((r) => r.student_id).filter((v): v is string => Boolean(v))
+        ansRows.map((r) => r.student_id).filter((v): v is string => Boolean(v)),
       );
       if (
         (typeof answersCount === "number" && answersCount > ansRows.length) ||
@@ -143,7 +163,7 @@ const ClassPerformance = () => {
         const set2 = new Set(
           (allIds ?? [])
             .map((r) => (r as any).student_id)
-            .filter((v): v is string => Boolean(v))
+            .filter((v): v is string => Boolean(v)),
         );
         if (set2.size > studentSet.size) studentSet = set2;
       }
@@ -196,7 +216,7 @@ const ClassPerformance = () => {
       }
 
       const topicList = Array.from(topicsSet.values()).sort((a, b) =>
-        a.localeCompare(b, undefined, { sensitivity: "base" })
+        a.localeCompare(b, undefined, { sensitivity: "base" }),
       );
 
       // Aggregate per-topic stats
@@ -242,7 +262,6 @@ const ClassPerformance = () => {
 
       setTopReviewTopics(worstFive.length ? worstFive : fallbackWorst);
 
-      // Accuracy from leitner_schedule preferred (tolerant to column names)
       let totalAttemptsFromSchedule = 0;
       let totalCorrectFromSchedule = 0;
       try {
@@ -261,7 +280,7 @@ const ClassPerformance = () => {
                 (row as any).attempts ??
                 (row as any).totalAttempts ??
                 (row as any).quiz_attempts ??
-                0
+                0,
             ) || 0;
           const correctVal =
             Number(
@@ -269,7 +288,7 @@ const ClassPerformance = () => {
                 (row as any).correct ??
                 (row as any).totalCorrect ??
                 (row as any).quiz_correct ??
-                0
+                0,
             ) || 0;
           totalAttemptsFromSchedule += attemptsVal;
           totalCorrectFromSchedule += correctVal;
@@ -277,18 +296,18 @@ const ClassPerformance = () => {
       } catch (e) {
         console.error(
           "Schedule aggregation failed (falling back to answers):",
-          e
+          e,
         );
       }
 
       if (totalAttemptsFromSchedule > 0 && totalCorrectFromSchedule >= 0) {
         setOverallAccuracy(
-          totalCorrectFromSchedule / totalAttemptsFromSchedule
+          totalCorrectFromSchedule / totalAttemptsFromSchedule,
         );
       } else {
         const correctFromRows = ansRows.reduce(
           (acc, r) => acc + (r.is_correct ? 1 : 0),
-          0
+          0,
         );
         setOverallAccuracy(attempts ? correctFromRows / attempts : 0);
       }
@@ -314,20 +333,59 @@ const ClassPerformance = () => {
         .sort((a, b) => a.date.localeCompare(b.date));
       setDailySeries(days.slice(-30));
 
-      if (attempts === 0 || studentSet.size === 0) {
-        console.warn(
-          "[ClassPerformance] No attempts or students found for class_id",
-          classId,
-          {
-            attempts,
-            students: studentSet.size,
-            answersCount,
-            ansRowsLen: ansRows.length,
-          }
-        );
+      try {
+        const graphResp = (await getKnowledgeGraphData(classNameSlug)) as any;
+        console.log("[ClassPerformance] graphResp", graphResp);
+        if (graphResp?.success && graphResp?.graphData?.react_flow_data?.[0]) {
+          const flowData = graphResp.graphData.react_flow_data[0] as any;
+
+          const rfNodes = Array.isArray(flowData?.reactFlowNodes)
+            ? flowData.reactFlowNodes
+            : [];
+          const rfEdges = Array.isArray(flowData?.reactFlowEdges)
+            ? flowData.reactFlowEdges
+            : [];
+
+          const accMap = new Map(
+            topicArr.map((t) => [t.topic, t.accuracy] as const),
+          );
+          const attemptsMap = new Map(
+            topicArr.map((t) => [t.topic, t.attempts] as const),
+          );
+
+          const mergedNodes: Node[] = rfNodes.map((n: any) => {
+            const label = String(n?.data?.label ?? "");
+            const accuracy = accMap.has(label) ? accMap.get(label) : null;
+            const attemptsForLabel = attemptsMap.get(label) ?? 0;
+
+            return {
+              ...n,
+              type: "editableNode",
+              data: {
+                ...(n?.data ?? {}),
+                label,
+                accuracy,
+                readOnly: true,
+                attempts: attemptsForLabel,
+              },
+            };
+          });
+
+          setGraphNodes(mergedNodes);
+          console.log("first node data", mergedNodes[0]?.data);
+          setGraphEdges(rfEdges);
+        } else {
+          setGraphNodes([]);
+          setGraphEdges([]);
+        }
+      } catch (e) {
+        console.error("Graph fetch failed:", e);
+        setGraphNodes([]);
+        setGraphEdges([]);
+      } finally {
+        setGraphLoaded(true);
       }
     };
-
     run();
   }, []);
 
@@ -346,7 +404,7 @@ const ClassPerformance = () => {
           Math.round(overallAttempts * overallAccuracy),
           Math.max(
             0,
-            overallAttempts - Math.round(overallAttempts * overallAccuracy)
+            overallAttempts - Math.round(overallAttempts * overallAccuracy),
           ),
         ],
         backgroundColor: ["#4caf50", "#f44336"],
@@ -426,8 +484,8 @@ const ClassPerformance = () => {
                 stats.averageAccuracy >= 0.7
                   ? "success.main"
                   : stats.averageAccuracy >= 0.5
-                  ? "warning.main"
-                  : "error.main"
+                    ? "warning.main"
+                    : "error.main"
               }
             >
               {formatPercentage(stats.averageAccuracy)}
@@ -499,7 +557,7 @@ const ClassPerformance = () => {
               <Chip
                 key={topic}
                 label={`${topic} (${formatPercentage(
-                  topicStats.find((t) => t.topic === topic)?.accuracy || 0
+                  topicStats.find((t) => t.topic === topic)?.accuracy || 0,
                 )})`}
                 color="warning"
                 sx={{ fontWeight: "bold" }}
@@ -508,6 +566,58 @@ const ClassPerformance = () => {
           </Box>
         </ChartContainer>
       )}
+      <ChartContainer>
+        <Typography variant="h6" gutterBottom>
+          Knowledge Graph Performance
+        </Typography>
+
+        <Box sx={{ height: 800, width: "100%" }}>
+          {graphLoaded ? (
+            graphNodes.length ? (
+              <ReactFlow
+                nodes={graphNodes}
+                edges={graphEdges}
+                nodeTypes={nodeTypes as any}
+                nodesDraggable={false}
+                nodesConnectable={false}
+                elementsSelectable={false}
+                panOnDrag
+                zoomOnScroll
+                colorMode={settings.viewMode}
+                nodeOrigin={[0.5, 0]}
+                fitView
+              >
+                <Background gap={20} />
+                <MiniMap />
+              </ReactFlow>
+            ) : (
+              <Box
+                sx={{
+                  height: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Typography color="text.primary">
+                  No graph found for this class.
+                </Typography>
+              </Box>
+            )
+          ) : (
+            <Box
+              sx={{
+                height: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Typography color="text.secondary">Loading graph...</Typography>
+            </Box>
+          )}
+        </Box>
+      </ChartContainer>
     </Box>
   );
 };
