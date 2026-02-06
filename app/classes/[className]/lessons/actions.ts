@@ -42,7 +42,7 @@ export const getAllLessons = async () => {
 
 async function getClassIdByName(
   supabase: ReturnType<typeof createClient>,
-  raw: string
+  raw: string,
 ) {
   const cleaned = decodeURIComponent(raw)
     .replace(/%20/g, " ")
@@ -87,7 +87,7 @@ export const lessonDataFor = async (className: string): Promise<Lesson[]> => {
     .select("*")
     .in(
       "lesson_id",
-      lessonIDs.map((lesson) => lesson.lesson_id)
+      lessonIDs.map((lesson) => lesson.lesson_id),
     );
 
   if (lessonsError) {
@@ -100,7 +100,11 @@ export const lessonDataFor = async (className: string): Promise<Lesson[]> => {
 
 export const createNewLesson = async (
   className: string,
-  { lessonName, topics }: { lessonName: string; topics: string[] }
+  {
+    lessonName,
+    topics,
+    isPublished,
+  }: { lessonName: string; topics: string[]; isPublished: boolean },
 ) => {
   const supabase = createClient();
 
@@ -109,7 +113,7 @@ export const createNewLesson = async (
   } = await supabase.auth.getUser();
   console.log("createNewLesson user id", user?.id);
   console.log("createNewLesson className", className);
-  console.log("payload", { lessonName, topics });
+  console.log("payload", { lessonName, topics, isPublished });
   if (!user?.id) {
     console.error("No user found");
     return { success: false, error: "No user found" };
@@ -129,12 +133,7 @@ export const createNewLesson = async (
   }
 
   try {
-    const PLACEHOLDER_LABELS = [
-      "Edit me 😊!",
-      "Edit me",
-      "Edit Me 😊!",
-      "Edit Me",
-    ];
+    const PLACEHOLDER_LABELS = ["Edit me 😊!"];
 
     const nodesArray: string[] = Array.isArray((graphData as any).nodes)
       ? ((graphData as any).nodes as any[])
@@ -143,7 +142,7 @@ export const createNewLesson = async (
       : [];
     if (nodesArray.length === 1 && PLACEHOLDER_LABELS.includes(nodesArray[0])) {
       console.error(
-        "createNewLesson: only placeholder node exists (nodes array)"
+        "createNewLesson: only placeholder node exists (nodes array)",
       );
       return {
         success: false,
@@ -163,7 +162,7 @@ export const createNewLesson = async (
       .filter(Boolean);
     if (flowLabels.length === 1 && PLACEHOLDER_LABELS.includes(flowLabels[0])) {
       console.error(
-        "createNewLesson: only placeholder node exists (react_flow_data)"
+        "createNewLesson: only placeholder node exists (react_flow_data)",
       );
       return {
         success: false,
@@ -180,8 +179,8 @@ export const createNewLesson = async (
         new Set(
           topics
             .map((t) => (typeof t === "string" ? t.trim() : ""))
-            .filter(Boolean)
-        )
+            .filter(Boolean),
+        ),
       )
     : [];
 
@@ -200,7 +199,7 @@ export const createNewLesson = async (
 
   if (normalizedTopics.length === 0) {
     console.error(
-      "createNewLesson: cannot create a lesson without at least one topic"
+      "createNewLesson: cannot create a lesson without at least one topic",
     );
     return {
       success: false,
@@ -210,7 +209,11 @@ export const createNewLesson = async (
 
   const { data: inserted, error: insertError } = await supabase
     .from("lessons")
-    .insert({ name: lessonName, topics: normalizedTopics })
+    .insert({
+      name: lessonName,
+      topics: normalizedTopics,
+      is_published: isPublished,
+    })
     .select("lesson_id")
     .limit(1);
 
@@ -232,7 +235,7 @@ export const createNewLesson = async (
   if (insertIntoClassLessonBankError) {
     console.error(
       "Error inserting into class_lesson_bank: ",
-      insertIntoClassLessonBankError
+      insertIntoClassLessonBankError,
     );
     return { success: false, error: insertIntoClassLessonBankError };
   }
@@ -242,7 +245,7 @@ export const createNewLesson = async (
 
 export const importLessonToClass = async (
   className: string,
-  lessonIDs: number[]
+  lessonIDs: number[],
 ) => {
   const supabase = createClient();
 
@@ -273,7 +276,11 @@ export const importLessonToClass = async (
 
 export const updateLesson = async (
   id: number,
-  { lessonName, topics }: { lessonName: string; topics: string[] }
+  {
+    lessonName,
+    topics,
+    isPublished,
+  }: { lessonName: string; topics: string[]; isPublished: boolean },
 ) => {
   const supabase = createClient();
 
@@ -291,14 +298,14 @@ export const updateLesson = async (
         new Set(
           topics
             .map((t) => (typeof t === "string" ? t.trim() : ""))
-            .filter(Boolean)
-        )
+            .filter(Boolean),
+        ),
       )
     : [];
 
   if (normalizedTopics.length === 0) {
     console.error(
-      "updateLesson: cannot save a lesson without at least one topic"
+      "updateLesson: cannot save a lesson without at least one topic",
     );
     return {
       success: false,
@@ -311,6 +318,7 @@ export const updateLesson = async (
     .update({
       name: lessonName,
       topics: normalizedTopics,
+      is_published: isPublished,
     })
     .eq("lesson_id", id);
 

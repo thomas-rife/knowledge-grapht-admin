@@ -16,6 +16,7 @@ import {
   Checkbox,
   ListItemText,
   CircularProgress,
+  FormControlLabel,
   type SelectChangeEvent,
 } from "@mui/material";
 import {
@@ -53,6 +54,7 @@ const AddLessonDialog = ({
   >("Add Lesson");
 
   const [nameError, setNameError] = useState<string>("");
+  const [publishLesson, setPublishLesson] = useState(false);
 
   const handleLessonDiaglogClose = () => {
     setOpen(false);
@@ -116,10 +118,12 @@ const AddLessonDialog = ({
         ? await createNewLesson(className, {
             lessonName: cleanedLessonName,
             topics: cleanedTopics,
+            isPublished: publishLesson,
           })
         : await updateLesson(lessonID, {
             lessonName: cleanedLessonName,
             topics: cleanedTopics,
+            isPublished: publishLesson,
           });
 
       if (response?.success) {
@@ -231,6 +235,16 @@ const AddLessonDialog = ({
                 </MenuItem>
               ))}
             </Select>
+
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={publishLesson}
+                  onChange={(e) => setPublishLesson(e.target.checked)}
+                />
+              }
+              label="Publish now? (Check if you want lesson visible to students)"
+            />
           </FormControl>
         </Box>
       </DialogContent>
