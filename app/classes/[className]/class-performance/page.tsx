@@ -466,7 +466,13 @@ const ClassPerformance = () => {
   };
 
   return (
-    <Box sx={{ p: 3 }}>
+    <Box
+      sx={{
+        p: 3,
+        backgroundColor: settings.viewMode === "light" ? "#f7f8fa" : undefined,
+        minHeight: "100vh",
+      }}
+    >
       <Typography variant="h4" gutterBottom>
         Class Performance Overview
       </Typography>
@@ -586,6 +592,9 @@ const ClassPerformance = () => {
                 colorMode={settings.viewMode}
                 nodeOrigin={[0.5, 0]}
                 fitView
+                style={{
+                  backgroundColor: settings.viewMode === "light" ? "#f7f8fa" : undefined,
+                }}
               >
                 <Background gap={20} />
                 <MiniMap />

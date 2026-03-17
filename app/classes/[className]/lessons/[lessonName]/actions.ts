@@ -1033,6 +1033,8 @@ export async function importQuestionsFromFile(
             answer_options: q.answer_options,
             answer: q.answer,
             image_url: q.image_url,
+            owner_id: user.id,
+            is_ai_generated: false,
           })
           .select("question_id")
           .single();
@@ -1058,6 +1060,7 @@ export async function importQuestionsFromFile(
         const { error: linkError } = await supabase
           .from("lesson_question_bank")
           .insert({
+            owner_id: user.id,
             lesson_id: lessonData.lesson_id,
             question_id: insertedQuestion.question_id,
           });
