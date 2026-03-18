@@ -750,10 +750,15 @@ export const getLessonIdByName = async (
   return link?.lesson_id ?? null;
 };
 
-export async function importQuestionsFromFile(
-  csvText: string,
-  lessonIdOrName: string | number,
-) {
+export async function importQuestionsFromFile({
+  csvText,
+  className,
+  lessonIdOrName,
+}: {
+  csvText: string;
+  className: string;
+  lessonIdOrName: string | number;
+}) {
   const supabase = createClient();
 
   const {
@@ -765,45 +770,58 @@ export async function importQuestionsFromFile(
   }
 
   try {
-    // Only resolve the lesson
-    console.log("[IMPORT] Looking up lesson:", lessonIdOrName);
+    const classId = await getClassIdByName(className);
+    if (!classId) {
+      return { success: false, error: `Class "${className}" not found` };
+    }
+
+    // Resolve the lesson inside the current class only
+    console.log("[IMPORT] Looking up lesson:", { className, lessonIdOrName });
 
     let lessonData;
     if (
       typeof lessonIdOrName === "number" ||
       /^\d+$/.test(String(lessonIdOrName))
     ) {
-      // It's an ID
+      // It's an ID - verify that the lesson belongs to this class
       const { data, error } = await supabase
-        .from("lessons")
-        .select("lesson_id, name")
+        .from("class_lesson_bank")
+        .select("lesson_id, lessons!inner(name)")
+        .eq("class_id", classId)
         .eq("lesson_id", Number(lessonIdOrName))
         .single();
 
       if (error || !data) {
         return {
           success: false,
-          error: `Lesson ID ${lessonIdOrName} not found: ${error?.message}`,
+          error: `Lesson ID ${lessonIdOrName} not found in class: ${error?.message}`,
         };
       }
-      lessonData = data;
+      lessonData = {
+        lesson_id: data.lesson_id,
+        name: (data.lessons as any)?.name ?? "",
+      };
     } else {
-      // It's a name - try to find it
+      // It's a name - resolve it through the class_lesson_bank
       const { data, error } = await supabase
-        .from("lessons")
-        .select("lesson_id, name")
-        .ilike("name", String(lessonIdOrName).trim())
+        .from("class_lesson_bank")
+        .select("lesson_id, lessons!inner(name)")
+        .eq("class_id", classId)
+        .ilike("lessons.name", String(lessonIdOrName).trim())
         .maybeSingle();
 
       if (error || !data) {
         return {
           success: false,
-          error: `Lesson "${lessonIdOrName}" not found: ${
+          error: `Lesson "${lessonIdOrName}" not found in class: ${
             error?.message || "No matching lesson"
           }`,
         };
       }
-      lessonData = data;
+      lessonData = {
+        lesson_id: data.lesson_id,
+        name: (data.lessons as any)?.name ?? "",
+      };
     }
 
     console.log("[IMPORT] Found lesson:", lessonData);
@@ -1056,6 +1074,33 @@ export async function importQuestionsFromFile(
           insertedQuestion.question_id,
         );
 
+        // Link to class
+        const { error: classLinkError } = await supabase
+          .from("class_question_bank")
+          .insert({
+            owner_id: user.id,
+            class_id: classId,
+            question_id: insertedQuestion.question_id,
+          });
+
+        if (classLinkError) {
+          console.error(
+            `[IMPORT] Failed to link question ${i + 1} to class:`,
+            classLinkError,
+          );
+          failed++;
+          uploadErrors.push(
+            `Question ${i + 1}: Created but failed to link to class: ${
+              classLinkError.message
+            }`,
+          );
+          await supabase
+            .from("questions")
+            .delete()
+            .eq("question_id", insertedQuestion.question_id);
+          continue;
+        }
+
         // Link to lesson
         const { error: linkError } = await supabase
           .from("lesson_question_bank")
@@ -1070,11 +1115,21 @@ export async function importQuestionsFromFile(
             `[IMPORT] Failed to link question ${i + 1}:`,
             linkError,
           );
+          failed++;
           uploadErrors.push(
             `Question ${i + 1}: Created but failed to link to lesson: ${
               linkError.message
             }`,
           );
+          await supabase
+            .from("class_question_bank")
+            .delete()
+            .eq("question_id", insertedQuestion.question_id);
+          await supabase
+            .from("questions")
+            .delete()
+            .eq("question_id", insertedQuestion.question_id);
+          continue;
         }
 
         imported++;

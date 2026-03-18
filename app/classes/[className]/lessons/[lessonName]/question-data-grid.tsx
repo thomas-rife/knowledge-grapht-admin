@@ -168,7 +168,11 @@ const QuestionDataGrid = ({
         console.log("[IMPORT] Using lesson name:", lessonIdentifier);
       }
 
-      const result = await importQuestionsFromFile(text, lessonIdentifier);
+      const result = await importQuestionsFromFile({
+        csvText: text,
+        className: params.className,
+        lessonIdOrName: lessonIdentifier,
+      });
 
       if (!result.success) {
         alert(`Import failed:\n\n${result.error}`);
