@@ -67,6 +67,14 @@ const Navbar = () => {
 
         <Button
           color="inherit"
+          onClick={() => router.push("/help")}
+          sx={{ letterSpacing: 0, textTransform: "none" }}
+        >
+          Help
+        </Button>
+
+        <Button
+          color="inherit"
           onClick={() => router.push("/about")}
           sx={{ letterSpacing: 0, textTransform: "none" }}
         >

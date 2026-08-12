@@ -1,155 +1,212 @@
-'use client'
+"use client";
 
-import { Box, Typography, useTheme, alpha } from '@mui/material'
-import Navbar from '@/components/nav-and-sidemenu/navbar'
+import Image from "next/image";
+import { useRouter } from "next/navigation";
+import {
+  AccountTreeOutlined,
+  InsightsOutlined,
+  MenuBookOutlined,
+} from "@mui/icons-material";
+import { Box, Button, Container, Divider, Typography } from "@mui/material";
+import logoImage from "@/assets/logo_without_app_name.png";
+import Navbar from "@/components/nav-and-sidemenu/navbar";
 
-interface AboutSectionProps {
-  title: string
-  titleId: string
-  children: React.ReactNode
-}
+const principles = [
+  {
+    icon: <AccountTreeOutlined />,
+    title: "Map course knowledge",
+    description:
+      "Instructors organize course topics as a graph of concepts and prerequisite relationships.",
+  },
+  {
+    icon: <MenuBookOutlined />,
+    title: "Connect instruction",
+    description:
+      "Lessons and assessment questions are linked to graph topics so course content stays organized.",
+  },
+  {
+    icon: <InsightsOutlined />,
+    title: "Study learning activity",
+    description:
+      "Recorded student activity can be reviewed at the course, topic, and individual-student level.",
+  },
+];
 
-const AboutSection = ({ title, titleId, children }: AboutSectionProps) => {
-  const theme = useTheme()
-
-  return (
-    <Box
-      component="section"
-      aria-labelledby={titleId}
-      sx={{
-        width: { xs: '95%', sm: '80%', md: '60%' },
-        bgcolor: 'background.paper',
-        padding: { xs: '1.5rem', sm: '2rem' },
-        borderRadius: '8px',
-        boxShadow: theme.shadows[1],
-        borderWidth: 1,
-        borderStyle: 'solid',
-        borderColor: theme =>
-          theme.palette.mode === 'dark' ? alpha(theme.palette.grey[700], 0.3) : 'transparent',
-      }}
-    >
-      <Typography id={titleId} variant="h5" sx={{ marginBottom: '1rem', color: 'primary.main' }}>
-        {title}
-      </Typography>
-      {children}
-    </Box>
-  )
-}
-
-const About = () => {
-  const theme = useTheme()
+export default function AboutPage() {
+  const router = useRouter();
 
   return (
     <>
       <Navbar />
-      <Box
-        aria-label="About Knowledge Grapht"
-        sx={{
-          marginTop: '70px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: { xs: 3, sm: 4 },
-          alignItems: 'center',
-          minHeight: '100vh',
-          padding: { xs: '1rem', sm: '2rem' },
-        }}
-      >
-        <Typography
-          variant="h3"
-          component="h1"
+      <Box component="main" sx={{ pt: "64px", minHeight: "100vh" }}>
+        <Box
+          component="header"
           sx={{
-            borderBottom: `2px solid ${theme.palette.primary.main}`,
-            color: 'primary.main',
-            marginBottom: '1rem',
-            fontWeight: 600,
-            textAlign: 'center',
+            borderBottom: 1,
+            borderColor: "divider",
+            bgcolor: "background.paper",
           }}
         >
-          About Knowledge Grapht
-        </Typography>
+          <Container
+            maxWidth="lg"
+            sx={{
+              minHeight: 360,
+              display: "grid",
+              gridTemplateColumns: "minmax(0, 1fr) 180px",
+              gap: 6,
+              alignItems: "center",
+              py: 6,
+            }}
+          >
+            <Box>
+              <Typography variant="h2" component="h1" fontWeight={750}>
+                Knowledge Grapht
+              </Typography>
+              <Typography
+                variant="h5"
+                color="text.secondary"
+                sx={{ mt: 1.5, maxWidth: 760, fontWeight: 400, lineHeight: 1.45 }}
+              >
+                An instructor workspace for structuring course concepts,
+                creating targeted review lessons, and studying learning
+                activity through a knowledge graph.
+              </Typography>
+              <Button
+                variant="contained"
+                onClick={() => router.push("/help")}
+                sx={{ mt: 3 }}
+              >
+                Open instructor guide
+              </Button>
+            </Box>
+            <Box sx={{ display: "flex", justifyContent: "center" }}>
+              <Image
+                src={logoImage}
+                alt="Knowledge Grapht"
+                width={160}
+                height={160}
+                priority
+                style={{ objectFit: "contain" }}
+              />
+            </Box>
+          </Container>
+        </Box>
 
-        <AboutSection title="Our Mission" titleId="mission-title">
-          <Typography variant="body1" component="p">
-            Students retain information best when they consistently review it and practice applying
-            it through spaced-repetition exercises. Knowledge Grapht is a service that empowers
-            professors to create customized review lessons for their courses and enables students to
-            reinforce their knowledge at their own pace. Our mission is to enhance the learning
-            experience by providing a platform that fosters deeper understanding and retention of
-            course material through spaced-repetition exercises and classroom gamification
-          </Typography>
-        </AboutSection>
+        <Container maxWidth="lg" sx={{ py: 6 }}>
+          <Box
+            component="section"
+            aria-labelledby="purpose-title"
+            sx={{
+              display: "grid",
+              gridTemplateColumns: "minmax(0, 0.75fr) minmax(0, 1.25fr)",
+              gap: 7,
+              pb: 6,
+            }}
+          >
+            <Typography
+              id="purpose-title"
+              variant="h4"
+              component="h2"
+              fontWeight={700}
+            >
+              Purpose
+            </Typography>
+            <Box>
+              <Typography variant="h6" sx={{ lineHeight: 1.55 }}>
+                Knowledge Grapht supports research into how structured course
+                knowledge and targeted review can help instructors understand
+                student learning.
+              </Typography>
+              <Typography
+                color="text.secondary"
+                sx={{ mt: 2, lineHeight: 1.7 }}
+              >
+                Instructors create a graph for each course, associate lessons
+                and questions with specific topics, publish review material,
+                and examine the activity produced as students work through it.
+                The current system is an active research platform, so features
+                and analysis methods may continue to change as they are tested.
+              </Typography>
+            </Box>
+          </Box>
 
-        <AboutSection title="Knowledge Graph Technology" titleId="technology-title">
-          <Typography variant="body1" component="p">
-            At the heart of Knowledge Grapht is our knowledge graph system. This powerful feature
-            allows professors to create visual representations of course concepts and their
-            interconnections. Essentially, the knowkedge graph provides a visual {'roadmap'} for
-            what students will learn and how course topics will build on each other. Each node
-            represents a key concept, while edges show prerequisite relationships between topics.
-            For instance, in an introductory computer science course, concepts like
-            {" 'loops'"} and {"'arrays'"} are connected to show their learning dependencies.
-          </Typography>
-        </AboutSection>
+          <Divider />
 
-        <AboutSection title="AI-Powered Learning Insights" titleId="ai-title">
-          <Typography variant="body1" component="p">
-            As students progress through lessons and answer questions, our intelligent system
-            continuously tracks and analyzes their performance within the context of the class’s
-            knowledge graph. This data provides valuable insights into individual and group learning
-            patterns, helping professors identify concepts that students find challenging. With this
-            information, professors can create targeted review materials to address specific areas
-            of difficulty. Our AI-driven analytics also offer personalized recommendations for
-            curriculum adjustments, ensuring that teaching strategies are optimized for student
-            success. Additionally, the system highlights areas where students may need extra
-            support, enabling professors to intervene early and provide the necessary resources for
-            improvement and allowing students to visually see which concepts they have mastered and
-            which ones need more attention.
-          </Typography>
-        </AboutSection>
+          <Box component="section" aria-labelledby="model-title" sx={{ py: 6 }}>
+            <Typography
+              id="model-title"
+              variant="h4"
+              component="h2"
+              fontWeight={700}
+            >
+              How the system is organized
+            </Typography>
+            <Box
+              sx={{
+                display: "grid",
+                gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                mt: 4,
+              }}
+            >
+              {principles.map((principle, index) => (
+                <Box
+                  key={principle.title}
+                  sx={{
+                    minWidth: 0,
+                    px: 3,
+                    borderLeft: index ? 1 : 0,
+                    borderColor: "divider",
+                    "&:first-of-type": { pl: 0 },
+                    "&:last-of-type": { pr: 0 },
+                  }}
+                >
+                  <Box sx={{ color: "primary.main", mb: 2 }}>
+                    {principle.icon}
+                  </Box>
+                  <Typography variant="h6" component="h3" fontWeight={700}>
+                    {principle.title}
+                  </Typography>
+                  <Typography
+                    color="text.secondary"
+                    sx={{ mt: 1, lineHeight: 1.65 }}
+                  >
+                    {principle.description}
+                  </Typography>
+                </Box>
+              ))}
+            </Box>
+          </Box>
 
-        <AboutSection title="Gamification and Engagement" titleId="gamification-title">
-          <Typography variant="body1" component="p">
-            Knowledge Grapht incorporates gamification elements to enhance student engagement and
-            motivation. By transforming learning into an interactive experience, we aim to make
-            studying more enjoyable and effective. Students can earn rewards, unlock achievements,
-            and track their progress over time, fostering a sense of accomplishment and continuous
-            improvement.
-          </Typography>
-        </AboutSection>
+          <Divider />
 
-        <AboutSection title="Knowledge Grapht Mobile App" titleId="mobile-title">
-          <Typography variant="body1" component="p">
-            The Knowledge Grapht mobile app empowers students to review course material and complete
-            exercises on the go, aiming to seamlessly integrate learning into their busy schedules.
-            With an intuitive interface and responsive design, the app enables students to engage
-            with their spaced-repetition lessons anytime, anywhere. Whether they have a few minutes
-            between classes or are studying on their commute, they can reinforce key concepts, and
-            track their progress with ease. By making learning more accessible and flexible, the app
-            helps students build lasting knowledge at their own pace.
-          </Typography>
-          <Typography variant="body2" component="p" sx={{ marginTop: '1rem' }}>
-            <strong>
-              NOTE: The mobile app is currently in development, and we are excited to share more
-              details soon!
-            </strong>
-          </Typography>
-        </AboutSection>
-
-        <AboutSection title="Knowledge Grapht Web App" titleId="web-title">
-          <Typography variant="body1" component="p">
-            The Knowledge Grapht web app is designed to help professors create, manage, and optimize
-            their courses with ease. It features a user-friendly interface for building interactive
-            knowledge graphs, setting up spaced-repetition lessons, and tracking student progress.
-            Professors can customize course materials to align with their curriculum, tailor review
-            exercises to address student needs, and gain valuable insights into learning outcomes
-            through detailed analytics. The platform simplifies course management while enhancing
-            student engagement, making it a powerful tool for fostering deeper learning and
-            retention
-          </Typography>
-        </AboutSection>
+          <Box
+            component="section"
+            aria-labelledby="scope-title"
+            sx={{
+              display: "grid",
+              gridTemplateColumns: "minmax(0, 0.75fr) minmax(0, 1.25fr)",
+              gap: 7,
+              pt: 6,
+              pb: 2,
+            }}
+          >
+            <Typography
+              id="scope-title"
+              variant="h4"
+              component="h2"
+              fontWeight={700}
+            >
+              Current scope
+            </Typography>
+            <Typography color="text.secondary" sx={{ lineHeight: 1.7 }}>
+              The instructor web application currently focuses on course
+              creation, knowledge-graph editing, lesson and question authoring,
+              student enrollment, and activity review. The Help page documents
+              the workflows available in this version of the platform.
+            </Typography>
+          </Box>
+        </Container>
       </Box>
     </>
-  )
+  );
 }
-
-export default About
