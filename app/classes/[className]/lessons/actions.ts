@@ -1,8 +1,12 @@
 "use server";
 
 import { createClient } from "@/utils/supabase/server";
-import { Lesson } from "@/types/content.types";
+import { GraphTopic, Lesson } from "@/types/content.types";
 import { getKnowledgeGraphData } from "../knowledge-graph/actions";
+import {
+  extractGraphTopics,
+  resolveGraphTopicValues,
+} from "@/utils/graph-topics";
 
 export const getAllLessons = async () => {
   const supabase = createClient();
@@ -72,7 +76,7 @@ export const lessonDataFor = async (className: string): Promise<Lesson[]> => {
 
   const { data: lessonIDs, error: lessonIDsError } = await supabase
     .from("class_lesson_bank")
-    .select("lesson_id")
+    .select("lesson_id, topic_node_ids")
     .eq("class_id", classId);
 
   if (lessonIDsError) {
@@ -95,16 +99,56 @@ export const lessonDataFor = async (className: string): Promise<Lesson[]> => {
     return [];
   }
 
-  return lessonData;
+  const topicIdsByLessonId = new Map(
+    lessonIDs.map((link) => [link.lesson_id, link.topic_node_ids ?? []]),
+  );
+  const { graphData } = await getKnowledgeGraphData(className);
+  const graphTopics = extractGraphTopics(
+    graphData && "react_flow_data" in graphData
+      ? graphData.react_flow_data
+      : [],
+  );
+
+  const lessonsWithNodeIds = lessonData.map((lesson) => {
+    const storedNodeIds = topicIdsByLessonId.get(lesson.lesson_id) ?? [];
+    const resolved = resolveGraphTopicValues(
+      graphTopics,
+      storedNodeIds.length ? storedNodeIds : lesson.topics,
+    );
+
+    return {
+      ...lesson,
+      topics: resolved.labels,
+      topic_node_ids: resolved.nodeIds,
+    };
+  });
+
+  await Promise.all(
+    lessonsWithNodeIds
+      .filter(
+        (lesson) =>
+          !(topicIdsByLessonId.get(lesson.lesson_id!) ?? []).length &&
+          lesson.topic_node_ids?.length,
+      )
+      .map((lesson) =>
+        supabase
+          .from("class_lesson_bank")
+          .update({ topic_node_ids: lesson.topic_node_ids })
+          .eq("class_id", classId)
+          .eq("lesson_id", lesson.lesson_id!),
+      ),
+  );
+
+  return lessonsWithNodeIds;
 };
 
 export const createNewLesson = async (
   className: string,
   {
     lessonName,
-    topics,
+    topicNodeIds,
     isPublished,
-  }: { lessonName: string; topics: string[]; isPublished: boolean },
+  }: { lessonName: string; topicNodeIds: string[]; isPublished: boolean },
 ) => {
   const supabase = createClient();
 
@@ -113,7 +157,7 @@ export const createNewLesson = async (
   } = await supabase.auth.getUser();
   console.log("createNewLesson user id", user?.id);
   console.log("createNewLesson className", className);
-  console.log("payload", { lessonName, topics, isPublished });
+  console.log("payload", { lessonName, topicNodeIds, isPublished });
   if (!user?.id) {
     console.error("No user found");
     return { success: false, error: "No user found" };
@@ -133,7 +177,7 @@ export const createNewLesson = async (
   }
 
   try {
-    const PLACEHOLDER_LABELS = ["Edit me 😊!"];
+    const PLACEHOLDER_LABELS = ["Edit me!", "Edit me 😊!"];
 
     const nodesArray: string[] = Array.isArray((graphData as any).nodes)
       ? ((graphData as any).nodes as any[])
@@ -174,17 +218,19 @@ export const createNewLesson = async (
     console.error("createNewLesson: error inspecting graphData", e);
   }
 
-  const normalizedTopics = Array.isArray(topics)
-    ? Array.from(
-        new Set(
-          topics
-            .map((t) => (typeof t === "string" ? t.trim() : ""))
-            .filter(Boolean),
-        ),
-      )
-    : [];
+  const graphTopics = extractGraphTopics((graphData as any).react_flow_data);
+  const resolvedTopics = resolveGraphTopicValues(graphTopics, topicNodeIds);
 
-  const PLACEHOLDER_LABELS = ["Edit me 😊!"];
+  if (resolvedTopics.unresolved.length) {
+    return {
+      success: false,
+      error: `Some selected topics no longer exist in the graph: ${resolvedTopics.unresolved.join(", ")}`,
+    };
+  }
+
+  const normalizedTopics = resolvedTopics.labels;
+
+  const PLACEHOLDER_LABELS = ["Edit me!", "Edit me 😊!"];
   if (
     normalizedTopics.length === 1 &&
     PLACEHOLDER_LABELS.includes(normalizedTopics[0])
@@ -230,6 +276,7 @@ export const createNewLesson = async (
       owner_id: user.id,
       class_id: classId,
       lesson_id: newLessonID,
+      topic_node_ids: resolvedTopics.nodeIds,
     });
 
   if (insertIntoClassLessonBankError) {
@@ -260,10 +307,45 @@ export const importLessonToClass = async (
 
   const classId = await getClassIdByName(supabase, className);
 
+  const { graphData } = await getKnowledgeGraphData(className);
+  const graphTopics = extractGraphTopics(
+    graphData && "react_flow_data" in graphData
+      ? graphData.react_flow_data
+      : [],
+  );
+  const { data: lessonsToImport, error: lessonsError } = await supabase
+    .from("lessons")
+    .select("lesson_id, name, topics")
+    .in("lesson_id", lessonIDs);
+
+  if (lessonsError) {
+    return { success: false, error: lessonsError };
+  }
+
+  const lessonById = new Map(
+    (lessonsToImport ?? []).map((lesson) => [lesson.lesson_id, lesson]),
+  );
+
   for (const lessonID of lessonIDs) {
+    const lesson = lessonById.get(lessonID);
+    if (!lesson) continue;
+
+    const resolvedTopics = resolveGraphTopicValues(graphTopics, lesson.topics);
+    if (resolvedTopics.unresolved.length || !resolvedTopics.nodeIds.length) {
+      return {
+        success: false,
+        error: `The topics for "${lesson.name}" do not match this class graph. Edit the lesson topics before importing it.`,
+      };
+    }
+
     const { error: insertError } = await supabase
       .from("class_lesson_bank")
-      .insert({ owner_id: user.id, class_id: classId, lesson_id: lessonID });
+      .insert({
+        owner_id: user.id,
+        class_id: classId,
+        lesson_id: lessonID,
+        topic_node_ids: resolvedTopics.nodeIds,
+      });
 
     if (insertError) {
       console.error("Error importing lessons ", insertError);
@@ -275,12 +357,13 @@ export const importLessonToClass = async (
 };
 
 export const updateLesson = async (
+  className: string,
   id: number,
   {
     lessonName,
-    topics,
+    topicNodeIds,
     isPublished,
-  }: { lessonName: string; topics: string[]; isPublished: boolean },
+  }: { lessonName: string; topicNodeIds: string[]; isPublished: boolean },
 ) => {
   const supabase = createClient();
 
@@ -293,15 +376,27 @@ export const updateLesson = async (
     return { success: false, error: "No user found" };
   }
 
-  const normalizedTopics = Array.isArray(topics)
-    ? Array.from(
-        new Set(
-          topics
-            .map((t) => (typeof t === "string" ? t.trim() : ""))
-            .filter(Boolean),
-        ),
-      )
-    : [];
+  const classId = await getClassIdByName(supabase, className);
+  if (!classId) {
+    return { success: false, error: "Class not found" };
+  }
+
+  const { graphData } = await getKnowledgeGraphData(className);
+  const graphTopics = extractGraphTopics(
+    graphData && "react_flow_data" in graphData
+      ? graphData.react_flow_data
+      : [],
+  );
+  const resolvedTopics = resolveGraphTopicValues(graphTopics, topicNodeIds);
+
+  if (resolvedTopics.unresolved.length) {
+    return {
+      success: false,
+      error: `Some selected topics no longer exist in the graph: ${resolvedTopics.unresolved.join(", ")}`,
+    };
+  }
+
+  const normalizedTopics = resolvedTopics.labels;
 
   if (normalizedTopics.length === 0) {
     console.error(
@@ -325,6 +420,17 @@ export const updateLesson = async (
   if (error) {
     console.error("Error updating lesson: ", error);
     return { success: false, error };
+  }
+
+  const { error: linkError } = await supabase
+    .from("class_lesson_bank")
+    .update({ topic_node_ids: resolvedTopics.nodeIds })
+    .eq("class_id", classId)
+    .eq("lesson_id", id);
+
+  if (linkError) {
+    console.error("Error updating lesson topic node IDs: ", linkError);
+    return { success: false, error: linkError };
   }
 
   return { success: true };
@@ -362,18 +468,50 @@ export const getLessonTopics = async (className: string) => {
     return { success: false, topics: [] };
   }
   const { react_flow_data } = graphData;
-  interface ReactFlowData {
-    reactFlowNodes: { data: { label: string } }[];
+  const topics: GraphTopic[] = extractGraphTopics(react_flow_data);
+
+  return { success: true, topics };
+};
+
+export const getQuestionTopicOptions = async (
+  className: string,
+  lessonName: string,
+) => {
+  const topicResponse = await getLessonTopics(className);
+  if (!topicResponse.success) {
+    return { success: false, topics: [], lessonTopicNodeIds: [] };
   }
 
-  const { reactFlowNodes } = react_flow_data[0] as unknown as ReactFlowData;
+  const supabase = createClient();
+  const classId = await getClassIdByName(supabase, className);
+  const cleanedLessonName = decodeURIComponent(lessonName)
+    .replace(/%20/g, " ")
+    .replace(/-/g, " ")
+    .trim();
+  const { data, error } = await supabase
+    .from("class_lesson_bank")
+    .select("topic_node_ids, lessons!inner(name)")
+    .eq("class_id", classId)
+    .eq("lessons.name", cleanedLessonName)
+    .limit(1);
 
-  const nodes = reactFlowNodes.map((node) => {
-    const {
-      data: { label },
-    } = node;
-    return label;
-  });
+  if (error) {
+    console.error("Error fetching lesson topic IDs:", error);
+    return {
+      success: false,
+      topics: topicResponse.topics,
+      lessonTopicNodeIds: [],
+    };
+  }
 
-  return { success: true, topics: nodes };
+  const resolved = resolveGraphTopicValues(
+    topicResponse.topics,
+    data?.[0]?.topic_node_ids ?? [],
+  );
+
+  return {
+    success: true,
+    topics: topicResponse.topics,
+    lessonTopicNodeIds: resolved.nodeIds,
+  };
 };

@@ -41,7 +41,7 @@ const About = () => {
 
   return (
     <>
-      <Navbar displaySideMenu={false} isSideMenuOpen={false} handleMenuOpen={() => {}} />
+      <Navbar />
       <Box
         aria-label="About Knowledge Grapht"
         sx={{

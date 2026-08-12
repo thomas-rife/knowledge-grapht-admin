@@ -10,8 +10,9 @@ const DataGridSkeleton = ({ columns }: { columns: GridColDef[] }) => {
       sx={{
         display: 'flex',
         flexDirection: 'column',
-        height: 'calc(100vh - 64px)', // to compensate for the navbar from the parent component
-        width: 'calc(100vw - 65px)', // to compensate for the side menu from the parent component
+        height: '100%',
+        minHeight: 400,
+        width: '100%',
       }}
     >
       <DataGrid

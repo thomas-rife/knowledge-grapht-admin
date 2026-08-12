@@ -1,7 +1,6 @@
 'use client'
 
-import { Box, IconButton, Tooltip, Typography, Alert, Fade } from '@mui/material'
-import { AddCircleOutline, Close } from '@mui/icons-material'
+import { Alert, Snackbar } from '@mui/material'
 import { useState } from 'react'
 import QuestionDataGrid from '@/app/classes/[className]/lessons/[lessonName]/question-data-grid'
 import AddQuestionDialog from '@/app/classes/[className]/lessons/[lessonName]/add-question-dialog'
@@ -20,64 +19,19 @@ const Questions = ({
   const [alertOpen, setAlertOpen] = useState<boolean>(false)
   const [dataLoading, setDataLoading] = useState<boolean>(true)
 
-  const handleDialogOpen = () => {
-    setOpen(true)
-  }
-
   return (
     <>
-      {dataLoading ? (
-        <ClassConentHeaderSkeleton />
-      ) : (
-        <>
-          <Box id="lesson-name" sx={{ paddingLeft: 3 }}>
-            <h1>{params.lessonName.replace(/%20/g, ' ')}</h1>
-          </Box>
-          <Box
-            sx={{
-              paddingLeft: 5,
-              paddingBottom: 1,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 1,
-            }}
-          >
-            <Typography variant="h5">Questions</Typography>
-            <Tooltip title="Add Question">
-              <IconButton onClick={handleDialogOpen}>
-                <AddCircleOutline />
-              </IconButton>
-            </Tooltip>
-          </Box>
-        </>
-      )}
-      <Box
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
+      {dataLoading && <ClassConentHeaderSkeleton />}
+
+      <Snackbar
+        open={alertOpen}
+        autoHideDuration={4000}
+        onClose={() => setAlertOpen(false)}
       >
-        <Fade in={alertOpen}>
-          <Alert
-            severity="success"
-            action={
-              <IconButton
-                aria-label="close"
-                color="inherit"
-                size="small"
-                onClick={() => {
-                  setAlertOpen(false)
-                }}
-              >
-                <Close fontSize="inherit" />
-              </IconButton>
-            }
-          >
-            Success!
-          </Alert>
-        </Fade>
-      </Box>
+        <Alert severity="success" onClose={() => setAlertOpen(false)}>
+          Question saved
+        </Alert>
+      </Snackbar>
 
       <QuestionDataGrid
         params={{ className: params.className, lessonName: params.lessonName }}

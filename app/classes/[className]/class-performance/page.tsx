@@ -25,6 +25,10 @@ import {
 import { getKnowledgeGraphData } from "@/app/classes/[className]/knowledge-graph/actions";
 import EditableNode from "@/components/custom-graph-nodes/editable-node";
 import { ViewModeContext } from "@/contexts/viewmode-context";
+import {
+  extractGraphTopics,
+  resolveGraphTopicValues,
+} from "@/utils/graph-topics";
 
 ChartJS.register(
   CategoryScale,
@@ -169,60 +173,81 @@ const ClassPerformance = () => {
       }
       setStudentsCount(studentSet.size);
 
-      // Topics from lessons → questions
-      const qidToTopics = new Map<number, string[]>();
-      let topicsSet = new Set<string>();
+      // Topic identity comes from the class-scoped graph node IDs.
+      const qidToTopicIds = new Map<number, string[]>();
+      const topicIdsSet = new Set<string>();
+      let graphTopicLabelById = new Map<string, string>();
       try {
-        const { data: clb } = (await supabase
-          .from("class_lesson_bank")
-          .select("lesson_id")
-          .eq("class_id", classId)) as {
-          data: { lesson_id: number }[] | null;
-          error: any;
-        };
-
-        const lessonIds = (clb ?? []).map((l) => l.lesson_id);
-
-        if (lessonIds.length) {
-          const { data: lqb } = (await supabase
-            .from("lesson_question_bank")
-            .select("question_id")
-            .in("lesson_id", lessonIds)) as {
-            data: { question_id: number }[] | null;
-            error: any;
-          };
-
-          const qids = (lqb ?? []).map((r) => r.question_id);
-
-          if (qids.length) {
-            const { data: qs } = await supabase
+        const [{ data: graphRow }, { data: questionLinks }] =
+          await Promise.all([
+            supabase
+              .from("class_knowledge_graph")
+              .select("react_flow_data")
+              .eq("class_id", classId)
+              .maybeSingle(),
+            supabase
+              .from("class_question_bank")
+              .select("question_id, topic_node_ids")
+              .eq("class_id", classId),
+          ]);
+        const graphTopics = extractGraphTopics(
+          (graphRow as any)?.react_flow_data ?? [],
+        );
+        graphTopicLabelById = new Map(
+          graphTopics.map((topic) => [topic.id, topic.label]),
+        );
+        const typedQuestionLinks = (questionLinks ?? []) as Array<{
+          question_id: number;
+          topic_node_ids: string[] | null;
+        }>;
+        const legacyQuestionIds = typedQuestionLinks
+          .filter((link) => !(link.topic_node_ids ?? []).length)
+          .map((link) => link.question_id);
+        const { data: legacyQuestions } = legacyQuestionIds.length
+          ? await supabase
               .from("questions")
               .select("question_id, topics")
-              .in("question_id", qids);
-            (qs ?? []).forEach((q) => {
-              const row = q as any;
-              const qid = Number(row.question_id);
-              const t = Array.isArray(row.topics) ? row.topics : [];
-              const cleaned = t
-                .map((tt: any) => String(tt ?? "").trim())
-                .filter((s: string) => s.length > 0);
-              if (qid && cleaned.length) qidToTopics.set(qid, cleaned);
-              cleaned.forEach((s: string) => topicsSet.add(s));
-            });
+              .in("question_id", legacyQuestionIds)
+          : { data: [] };
+        const legacyTopicsByQuestionId = new Map(
+          ((legacyQuestions ?? []) as Array<{
+            question_id: number;
+            topics: string[];
+          }>).map((question) => [
+            question.question_id,
+            question.topics,
+          ]),
+        );
+
+        typedQuestionLinks.forEach((link) => {
+          const storedNodeIds = link.topic_node_ids ?? [];
+          const resolved = resolveGraphTopicValues(
+            graphTopics,
+            storedNodeIds.length
+              ? storedNodeIds
+              : legacyTopicsByQuestionId.get(link.question_id),
+          );
+          if (resolved.nodeIds.length) {
+            qidToTopicIds.set(link.question_id, resolved.nodeIds);
+            resolved.nodeIds.forEach((nodeId) => topicIdsSet.add(nodeId));
           }
-        }
+        });
       } catch (e) {
         console.error("Topics aggregation failed:", e);
       }
 
-      const topicList = Array.from(topicsSet.values()).sort((a, b) =>
-        a.localeCompare(b, undefined, { sensitivity: "base" }),
+      const topicIdList = Array.from(topicIdsSet.values()).sort((a, b) =>
+        (graphTopicLabelById.get(a) ?? a).localeCompare(
+          graphTopicLabelById.get(b) ?? b,
+          undefined,
+          { sensitivity: "base" },
+        ),
       );
 
       // Aggregate per-topic stats
       const perTopic = new Map<string, { attempts: number; correct: number }>();
       for (const ans of ansRows) {
-        const qTopics = qidToTopics.get(Number(ans.question_id)) || [];
+        const qTopics = qidToTopicIds.get(Number(ans.question_id)) || [];
         if (!qTopics.length) continue;
         for (const t of qTopics) {
           const cur = perTopic.get(t) || { attempts: 0, correct: 0 };
@@ -232,11 +257,11 @@ const ClassPerformance = () => {
         }
       }
 
-      const topicArr: TopicStats[] = topicList.map((topic) => {
-        const agg = perTopic.get(topic) || { attempts: 0, correct: 0 };
+      const topicArr: TopicStats[] = topicIdList.map((topicId) => {
+        const agg = perTopic.get(topicId) || { attempts: 0, correct: 0 };
         const accuracy = agg.attempts ? agg.correct / agg.attempts : 0;
         return {
-          topic,
+          topic: graphTopicLabelById.get(topicId) ?? topicId,
           attempts: agg.attempts,
           correct: agg.correct,
           accuracy,

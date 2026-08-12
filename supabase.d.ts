@@ -105,16 +105,19 @@ export type Database = {
           class_id: number
           lesson_id: number
           owner_id: string
+          topic_node_ids: string[]
         }
         Insert: {
           class_id: number
           lesson_id: number
           owner_id: string
+          topic_node_ids?: string[]
         }
         Update: {
           class_id?: number
           lesson_id?: number
           owner_id?: string
+          topic_node_ids?: string[]
         }
         Relationships: [
           {
@@ -145,16 +148,19 @@ export type Database = {
           class_id: number
           owner_id: string
           question_id: number
+          topic_node_ids: string[]
         }
         Insert: {
           class_id: number
           owner_id: string
           question_id: number
+          topic_node_ids?: string[]
         }
         Update: {
           class_id?: number
           owner_id?: string
           question_id?: number
+          topic_node_ids?: string[]
         }
         Relationships: [
           {

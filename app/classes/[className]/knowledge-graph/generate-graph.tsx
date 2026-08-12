@@ -1,12 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import {
-  Background,
-  ReactFlow,
-  type Edge,
-  type Node,
-} from "@xyflow/react";
+import { Background, ReactFlow, type Edge, type Node } from "@xyflow/react";
 import {
   Alert,
   Box,
@@ -30,9 +25,7 @@ import { useTheme } from "@mui/material/styles";
 
 import { Json } from "@/supabase";
 
-import {
-  generateKnowledgeGraphFromCourseMaterial,
-} from "./actions";
+import { generateKnowledgeGraphFromCourseMaterial } from "./actions";
 
 type GraphGranularity = "simple" | "standard" | "detailed";
 
@@ -78,6 +71,7 @@ interface GeneratedMetadata {
 
 interface GenerateGraphProps {
   className: string;
+  hasExistingGraph?: boolean;
   onPreviewGenerated?: (graphData: GraphPreviewData) => void;
   onSaved?: (graphData: GraphPreviewData) => void;
 }
@@ -118,6 +112,7 @@ const getQuotaPopupMessage = (errorText: string) => {
 
 export default function GenerateGraph({
   className,
+  hasExistingGraph = false,
   onPreviewGenerated,
   onSaved,
 }: GenerateGraphProps) {
@@ -131,6 +126,7 @@ export default function GenerateGraph({
   );
   const [preview, setPreview] = useState<GraphPreviewData | null>(null);
   const [generated, setGenerated] = useState<GeneratedMetadata | null>(null);
+  const [confirmReplaceOpen, setConfirmReplaceOpen] = useState(false);
   const [isGenerating, startGenerating] = useTransition();
   const [isSaving, startSaving] = useTransition();
 
@@ -162,10 +158,7 @@ export default function GenerateGraph({
       : [];
 
     const edges = Array.isArray(rawFlow?.reactFlowEdges)
-      ? rawFlow.reactFlowEdges.map((edge) => ({
-          ...edge,
-          animated: true,
-        }))
+      ? rawFlow.reactFlowEdges
       : [];
 
     return { nodes, edges };
@@ -227,8 +220,23 @@ export default function GenerateGraph({
 
     setError(null);
 
+    if (hasExistingGraph) {
+      setConfirmReplaceOpen(true);
+      return;
+    }
+
     startSaving(async () => {
       onSaved?.(preview);
+      setIsOpen(false);
+    });
+  };
+
+  const handleConfirmReplace = () => {
+    if (!preview) return;
+
+    startSaving(async () => {
+      onSaved?.(preview);
+      setConfirmReplaceOpen(false);
       setIsOpen(false);
     });
   };
@@ -344,8 +352,8 @@ export default function GenerateGraph({
                       Preview
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
-                      Review the generated structure before saving it to the
-                      class graph. This will overwrite your current graph.
+                      Review the generated structure before applying it to the
+                      class graph.
                     </Typography>
                   </Box>
                   <Button
@@ -702,7 +710,7 @@ export default function GenerateGraph({
         </DialogContent>
         <DialogActions>
           <Button onClick={closeModal} disabled={isGenerating || isSaving}>
-            Close
+            Cancel
           </Button>
         </DialogActions>
       </Dialog>
@@ -721,6 +729,38 @@ export default function GenerateGraph({
           {quotaPopupMessage}
         </Alert>
       </Snackbar>
+      <Dialog
+        open={confirmReplaceOpen}
+        onClose={() => {
+          if (!isSaving) setConfirmReplaceOpen(false);
+        }}
+      >
+        <DialogTitle>Replace Existing Graph?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary">
+            This class already has a saved graph. Applying the generated graph
+            will replace the current editor contents. You can still cancel out
+            of edit mode afterward to restore the saved graph if you do not save
+            your changes.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => setConfirmReplaceOpen(false)}
+            disabled={isSaving}
+          >
+            Keep Current Graph
+          </Button>
+          <Button
+            color="warning"
+            variant="contained"
+            onClick={handleConfirmReplace}
+            disabled={isSaving}
+          >
+            {isSaving ? "Applying..." : "Replace In Editor"}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 }

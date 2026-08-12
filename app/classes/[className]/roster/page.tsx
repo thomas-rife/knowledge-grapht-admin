@@ -132,7 +132,7 @@ const ClassRoster = ({ params }: { params: { className: string } }) => {
       <Box sx={{ p: 4, height: "100%", overflow: "auto" }}>
         <Box sx={{ mb: 4 }}>
           <Typography variant="h4" component="h1" fontWeight="bold">
-            Class Roster - {decodeURIComponent(params.className)}
+            Class Roster
           </Typography>
         </Box>
         <Box sx={{ mb: 4 }}>
@@ -158,7 +158,7 @@ const ClassRoster = ({ params }: { params: { className: string } }) => {
       {/* Header Section */}
       <Box sx={{ mb: 4 }}>
         <Typography variant="h4" component="h1" fontWeight="bold">
-          Class Roster - {decodeURIComponent(params.className)}
+          Class Roster
         </Typography>
       </Box>
 

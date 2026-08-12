@@ -9,22 +9,20 @@ import {
   DialogActions,
   Button,
   TextField,
-  Select,
-  MenuItem,
-  InputLabel,
-  FormControl,
   Checkbox,
-  ListItemText,
   CircularProgress,
   FormControlLabel,
-  type SelectChangeEvent,
+  FormHelperText,
+  Alert,
 } from "@mui/material";
+import { GraphTopic } from "@/types/content.types";
 import {
   createNewLesson,
   updateLesson,
   getLessonTopics,
 } from "@/app/classes/[className]/lessons/actions";
 import { Lesson } from "@/types/content.types";
+import TopicPicker from "@/components/questions/topic-picker";
 
 const AddLessonDialog = ({
   className,
@@ -43,17 +41,19 @@ const AddLessonDialog = ({
 }) => {
   const [lessonID, setLessonID] = useState<number>(-1);
   const [newLessonName, setNewLessonName] = useState<string>("");
-  const [lessonTopics, setLessonTopics] = useState<string[]>([]);
+  const [lessonTopics, setLessonTopics] = useState<GraphTopic[]>([]);
+  const [topicsLoading, setTopicsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [selectedLessonTopics, setSelectedLessonTopics] = useState<string[]>(
     [],
   );
-  const [searchTerm, setSearchTerm] = useState("");
   const [buttonOperation, setButtonOperation] = useState<
     "Add Lesson" | "Update Lesson"
   >("Add Lesson");
 
   const [nameError, setNameError] = useState<string>("");
+  const [topicError, setTopicError] = useState<string>("");
+  const [saveError, setSaveError] = useState<string>("");
   const [publishLesson, setPublishLesson] = useState(false);
 
   const handleLessonDiaglogClose = () => {
@@ -63,16 +63,9 @@ const AddLessonDialog = ({
     setButtonOperation("Add Lesson");
     resetPrevLessonData(null);
     setNameError("");
-  };
-
-  const handleLessonTopicChange = (
-    e: SelectChangeEvent<typeof selectedLessonTopics>,
-  ) => {
-    setSelectedLessonTopics(
-      typeof e.target.value === "string"
-        ? e.target.value.split(",")
-        : e.target.value,
-    );
+    setTopicError("");
+    setSaveError("");
+    setPublishLesson(false);
   };
 
   const handleLessonNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -84,6 +77,7 @@ const AddLessonDialog = ({
   const submitForm = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (isSaving) return;
+    setSaveError("");
 
     // Validate before submitting
     const cleanedLessonName = newLessonName.replace(/[:]/g, "-").trim();
@@ -98,7 +92,7 @@ const AddLessonDialog = ({
       return;
     }
 
-    const cleanedTopics = Array.from(
+    const cleanedTopicNodeIds = Array.from(
       new Set(
         (selectedLessonTopics || [])
           .map((t) => String(t).trim())
@@ -106,8 +100,8 @@ const AddLessonDialog = ({
       ),
     );
 
-    if (cleanedTopics.length === 0) {
-      alert("Select at least one topic");
+    if (cleanedTopicNodeIds.length === 0) {
+      setTopicError("Select at least one topic");
       return;
     }
 
@@ -117,30 +111,26 @@ const AddLessonDialog = ({
       const response = addingLesson
         ? await createNewLesson(className, {
             lessonName: cleanedLessonName,
-            topics: cleanedTopics,
+            topicNodeIds: cleanedTopicNodeIds,
             isPublished: publishLesson,
           })
-        : await updateLesson(lessonID, {
+        : await updateLesson(className, lessonID, {
             lessonName: cleanedLessonName,
-            topics: cleanedTopics,
+            topicNodeIds: cleanedTopicNodeIds,
             isPublished: publishLesson,
           });
 
       if (response?.success) {
         handleLessonDiaglogClose();
-        alert(
-          addingLesson
-            ? "Lesson added successfully"
-            : "Lesson updated successfully",
-        );
         setRefreshGrid((prev) => prev + 1);
         return;
       }
-      alert(
-        `Error ${addingLesson ? "adding" : "updating"} lesson${
-          response?.error ? `: ${response.error}` : ""
-        }`,
+      setSaveError(
+        `Unable to ${addingLesson ? "add" : "update"} the lesson. Please try again.`,
       );
+    } catch (error) {
+      console.error("Unable to save lesson:", error);
+      setSaveError("Unable to save the lesson. Please try again.");
     } finally {
       setIsSaving(false);
     }
@@ -149,48 +139,59 @@ const AddLessonDialog = ({
   useEffect(() => {
     // prepopulating the form with previous lesson data if in edit mode
     if (prevLessonData) {
-      const { lesson_id, name, topics } = prevLessonData;
+      const { lesson_id, name, is_published } = prevLessonData;
       setLessonID(lesson_id ?? -1);
       setNewLessonName(name ?? "");
-      setLessonTopics(topics ?? []);
-      setSelectedLessonTopics(topics ?? []);
+      setPublishLesson(Boolean(is_published));
       setButtonOperation("Update Lesson");
     }
   }, [prevLessonData]);
 
   useEffect(() => {
+    if (!prevLessonData || !lessonTopics.length) return;
+
+    if (prevLessonData.topic_node_ids?.length) {
+      setSelectedLessonTopics(prevLessonData.topic_node_ids);
+      return;
+    }
+
+    const legacyLabels = new Set(
+      (prevLessonData.topics ?? []).map((label) => label.trim().toLowerCase()),
+    );
+    setSelectedLessonTopics(
+      lessonTopics
+        .filter((topic) => legacyLabels.has(topic.label.toLowerCase()))
+        .map((topic) => topic.id),
+    );
+  }, [lessonTopics, prevLessonData]);
+
+  useEffect(() => {
     if (!open) return;
     (async () => {
-      const response = await getLessonTopics(className);
-      if (response.success) {
-        setLessonTopics(response.topics ?? []);
+      setTopicsLoading(true);
+      try {
+        const response = await getLessonTopics(className);
+        if (response.success) {
+          setLessonTopics(response.topics ?? []);
+        } else {
+          setLessonTopics([]);
+        }
+      } finally {
+        setTopicsLoading(false);
       }
     })();
   }, [open, className]);
-
-  useEffect(() => {
-    const fetchLessonTopics = async () => {
-      const response = await getLessonTopics(className);
-      if (response.success) {
-        const { topics } = response;
-        setLessonTopics(topics ?? []);
-      }
-    };
-    fetchLessonTopics();
-  }, [className]);
-
-  const filteredItems = lessonTopics.filter((lessonTopics) =>
-    lessonTopics.toLowerCase().includes(searchTerm.toLowerCase()),
-  );
 
   return (
     <Dialog
       open={open}
       PaperProps={{ component: "form", onSubmit: submitForm }}
       disableEscapeKeyDown={isSaving}
+      fullWidth
+      maxWidth="md"
     >
-      <DialogTitle>Add Lesson</DialogTitle>
-      <DialogContent>
+      <DialogTitle>{buttonOperation}</DialogTitle>
+      <DialogContent dividers>
         <Box
           id="add-new-lesson-form"
           sx={{
@@ -200,6 +201,7 @@ const AddLessonDialog = ({
             gap: 2,
           }}
         >
+          {saveError && <Alert severity="error">{saveError}</Alert>}
           <TextField
             required
             autoFocus
@@ -210,42 +212,31 @@ const AddLessonDialog = ({
             onChange={handleLessonNameChange}
             error={!!nameError}
           />
-          <FormControl fullWidth>
-            <InputLabel id="lesson-topics">Lesson Topics</InputLabel>
-            <Select
-              required
-              multiple
-              labelId="lesson-topics"
+          <Box>
+            <TopicPicker
+              topics={lessonTopics}
               value={selectedLessonTopics}
-              onChange={handleLessonTopicChange}
-              renderValue={(selected) => (selected as string[]).join(", ")}
-            >
-              {/* <TextField
-                label="Search"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search topics..."
-              /> */}
-
-              {lessonTopics.map((topic) => (
-                // {filteredTopics.map((topic) => (
-                <MenuItem key={topic} value={topic}>
-                  <Checkbox checked={selectedLessonTopics.includes(topic)} />
-                  <ListItemText primary={topic} />
-                </MenuItem>
-              ))}
-            </Select>
-
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={publishLesson}
-                  onChange={(e) => setPublishLesson(e.target.checked)}
-                />
-              }
-              label="Publish now? (Check if you want lesson visible to students)"
+              onChange={(nodeIds) => {
+                setSelectedLessonTopics(nodeIds);
+                setTopicError("");
+              }}
+              label="Lesson topics"
+              disabled={isSaving}
+              loading={topicsLoading}
+              columns={3}
             />
-          </FormControl>
+            {topicError && <FormHelperText error>{topicError}</FormHelperText>}
+          </Box>
+
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={publishLesson}
+                onChange={(e) => setPublishLesson(e.target.checked)}
+              />
+            }
+            label="Publish now"
+          />
         </Box>
       </DialogContent>
       <DialogActions>
@@ -258,6 +249,7 @@ const AddLessonDialog = ({
         </Button>
         <Button
           type="submit"
+          variant="contained"
           disabled={isSaving}
           startIcon={isSaving ? <CircularProgress size={18} /> : null}
         >

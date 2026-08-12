@@ -1,4 +1,4 @@
-'use client'
+"use client";
 
 import {
   Box,
@@ -19,13 +19,41 @@ import {
   Skeleton,
   CircularProgress,
   useTheme,
-} from '@mui/material'
-import { AddCircleOutline, School } from '@mui/icons-material'
-import { getClassData, createNewClass } from '@/app/classes/actions'
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import NavbarWithSideMenu from '@/components/nav-and-sidemenu/navbar-with-sidemenu'
-import { Slider, Stack } from '@mui/material'
+  Stepper,
+  Step,
+  StepLabel,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  RadioGroup,
+  FormControlLabel,
+  Radio,
+  Divider,
+  Checkbox,
+  LinearProgress,
+  Chip,
+} from "@mui/material";
+import { AddCircleOutline, School } from "@mui/icons-material";
+import {
+  getClassData,
+  createNewClass,
+  getCatalogCourses,
+  getGraphSourcesForCatalogCourse,
+  getLessonsForGraphSource,
+  type CatalogCourseOption,
+  type GraphSourceOption,
+  type GraphSourceLesson,
+} from "@/app/classes/actions";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import AppNavigation from "@/components/nav-and-sidemenu/app-navigation";
+import { Slider, Stack } from "@mui/material";
+
+type StartingPoint = "syllabus" | "copy" | "scratch";
+type GraphGranularity = "simple" | "standard" | "detailed";
+
+const CLASS_NAME_PATTERN = /^[a-zA-Z0-9\s\-_&().]+$/;
 
 /**
  * TODO: need to create a theme provider to handle dark mode and light mode
@@ -34,45 +62,47 @@ import { Slider, Stack } from '@mui/material'
 
 // array of header colors for classes - light mode colors
 const LIGHT_MODE_COLORS = [
-  '#1976d2', // blue (primary)
-  '#2e7d32', // green
-  '#d32f2f', // red
-  '#7b1fa2', // purple
-  '#ed6c02', // orange
-  '#0288d1', // light blue
-  '#5d4037', // brown
-  '#6a1b9a', // deep purple
-  '#00695c', // teal
-  '#c2185b', // pink
-]
+  "#1976d2", // blue (primary)
+  "#2e7d32", // green
+  "#d32f2f", // red
+  "#7b1fa2", // purple
+  "#ed6c02", // orange
+  "#0288d1", // light blue
+  "#5d4037", // brown
+  "#6a1b9a", // deep purple
+  "#00695c", // teal
+  "#c2185b", // pink
+];
 
 // array of header colors for classes - dark mode colors (slightly deeper versions)
 const DARK_MODE_COLORS = [
-  '#0d47a1', // darker blue
-  '#1b5e20', // darker green
-  '#b71c1c', // darker red
-  '#4a148c', // darker purple
-  '#e65100', // darker orange
-  '#01579b', // darker light blue
-  '#3e2723', // darker brown
-  '#4a148c', // darker deep purple
-  '#004d40', // darker teal
-  '#880e4f', // darker pink
-]
+  "#0d47a1", // darker blue
+  "#1b5e20", // darker green
+  "#b71c1c", // darker red
+  "#4a148c", // darker purple
+  "#e65100", // darker orange
+  "#01579b", // darker light blue
+  "#3e2723", // darker brown
+  "#4a148c", // darker deep purple
+  "#004d40", // darker teal
+  "#880e4f", // darker pink
+];
 
 // Number of skeleton cards to show during loading
-const SKELETON_COUNT = 8
+const SKELETON_COUNT = 8;
 
 const ClassesSkeleton = ({ isDarkMode }: { isDarkMode: boolean }) => {
   return (
     <Grid container spacing={3}>
       {Array.from(new Array(SKELETON_COUNT)).map((_, index) => (
         <Grid item xs={12} sm={6} md={4} lg={3} key={index}>
-          <Card elevation={2} sx={{ height: '100%' }}>
+          <Card elevation={2} sx={{ height: "100%" }}>
             <Box
               sx={{
-                height: '90px',
-                backgroundColor: isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.08)',
+                height: "90px",
+                backgroundColor: isDarkMode
+                  ? "rgba(255,255,255,0.05)"
+                  : "rgba(0,0,0,0.08)",
               }}
             >
               <Skeleton
@@ -81,7 +111,9 @@ const ClassesSkeleton = ({ isDarkMode }: { isDarkMode: boolean }) => {
                 width="100%"
                 animation="wave"
                 sx={{
-                  backgroundColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.2)',
+                  backgroundColor: isDarkMode
+                    ? "rgba(255,255,255,0.1)"
+                    : "rgba(255,255,255,0.2)",
                 }}
               />
             </Box>
@@ -93,46 +125,81 @@ const ClassesSkeleton = ({ isDarkMode }: { isDarkMode: boolean }) => {
                 animation="wave"
                 sx={{ marginBottom: 1 }}
               />
-              <Skeleton variant="text" height={20} width="90%" animation="wave" />
-              <Skeleton variant="text" height={20} width="70%" animation="wave" />
+              <Skeleton
+                variant="text"
+                height={20}
+                width="90%"
+                animation="wave"
+              />
+              <Skeleton
+                variant="text"
+                height={20}
+                width="70%"
+                animation="wave"
+              />
             </CardContent>
           </Card>
         </Grid>
       ))}
     </Grid>
-  )
-}
+  );
+};
 const Classes = () => {
-  const theme = useTheme()
-  const isDarkMode = theme.palette.mode === 'dark'
-  const [navigatingToClass, setNavigatingToClass] = useState<string | null>(null)
+  const theme = useTheme();
+  const isDarkMode = theme.palette.mode === "dark";
+  const [navigatingToClass, setNavigatingToClass] = useState<string | null>(
+    null,
+  );
 
   // Select the appropriate color array based on the theme mode
-  const CLASS_HEADER_COLORS = isDarkMode ? DARK_MODE_COLORS : LIGHT_MODE_COLORS
+  const CLASS_HEADER_COLORS = isDarkMode ? DARK_MODE_COLORS : LIGHT_MODE_COLORS;
 
-  const [classes, setClasses] = useState<(string | null)[]>([])
-  const [addClassDialogOpen, setAddClassDialogOpen] = useState<boolean>(false)
-  const [newClassName, setNewClassName] = useState<string>('')
-  const [isLoading, setIsLoading] = useState<boolean>(true)
+  const [classes, setClasses] = useState<(string | null)[]>([]);
+  const [addClassDialogOpen, setAddClassDialogOpen] = useState<boolean>(false);
+  const [newClassName, setNewClassName] = useState<string>("");
+  const [showClassNameValidation, setShowClassNameValidation] = useState(false);
+  const [onboardingStep, setOnboardingStep] = useState(0);
+  const [catalogCourses, setCatalogCourses] = useState<CatalogCourseOption[]>(
+    [],
+  );
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [selectedDepartment, setSelectedDepartment] = useState<string>("");
+  const [selectedCatalogCourseId, setSelectedCatalogCourseId] = useState<
+    number | ""
+  >("");
+  const [startingPoint, setStartingPoint] = useState<StartingPoint>("syllabus");
+  const [courseMaterial, setCourseMaterial] = useState("");
+  const [graphGranularity, setGraphGranularity] =
+    useState<GraphGranularity>("standard");
+  const [graphSources, setGraphSources] = useState<GraphSourceOption[]>([]);
+  const [graphSourcesLoading, setGraphSourcesLoading] = useState(false);
+  const [selectedSourceClassId, setSelectedSourceClassId] = useState<
+    number | ""
+  >("");
+  const [sourceLessons, setSourceLessons] = useState<GraphSourceLesson[]>([]);
+  const [sourceLessonsLoading, setSourceLessonsLoading] = useState(false);
+  const [selectedLessonIds, setSelectedLessonIds] = useState<number[]>([]);
+  const [creatingClass, setCreatingClass] = useState(false);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [notification, setNotification] = useState<{
-    show: boolean
-    message: string
-    type: 'success' | 'error'
+    show: boolean;
+    message: string;
+    type: "success" | "error";
   }>({
     show: false,
-    message: '',
-    type: 'success',
-  })
+    message: "",
+    type: "success",
+  });
 
-  const [classLevel, setClassLevel] = useState<number>(0)
+  const [classLevel, setClassLevel] = useState<number>(0);
   const LEVELS = [
-    { value: 0, label: 'Intro' },
-    { value: 1, label: 'Foundational' },
-    { value: 2, label: 'Intermediate' },
-    { value: 3, label: 'Advanced' },
-  ]
+    { value: 0, label: "Intro" },
+    { value: 1, label: "Foundation" },
+    { value: 2, label: "Intermediate" },
+    { value: 3, label: "Advanced" },
+  ];
 
-  const router = useRouter()
+  const router = useRouter();
 
   /**
    * Function to get a color for the class header based on the class name and theme mode
@@ -144,119 +211,293 @@ const Classes = () => {
   const getClassColor = (className: string, index: number) => {
     // hash the class name to get a consistent color for each class
     const hashCode =
-      className?.split('').reduce((acc, char) => {
-        return char.charCodeAt(0) + ((acc << 5) - acc)
-      }, 0) || 0
+      className?.split("").reduce((acc, char) => {
+        return char.charCodeAt(0) + ((acc << 5) - acc);
+      }, 0) || 0;
 
-    const colorByHash = CLASS_HEADER_COLORS[Math.abs(hashCode) % CLASS_HEADER_COLORS.length]
-    return colorByHash
-  }
+    const colorByHash =
+      CLASS_HEADER_COLORS[Math.abs(hashCode) % CLASS_HEADER_COLORS.length];
+    return colorByHash;
+  };
 
   /**
    *  handlers
    */
-  const handleOpenAddClassDialog = () => setAddClassDialogOpen(true)
-  const handleCloseAddClassDialog = () => setAddClassDialogOpen(false)
+  const handleOpenAddClassDialog = () => setAddClassDialogOpen(true);
+  const handleCloseAddClassDialog = () => {
+    if (!creatingClass) setAddClassDialogOpen(false);
+  };
 
   const handleCancelAddClass = () => {
-    setNewClassName('')
-    setAddClassDialogOpen(false)
-  }
+    if (creatingClass) return;
+    resetOnboardingDialog();
+  };
 
-  const showNotification = (message: string, type: 'success' | 'error') => {
+  const resetOnboardingDialog = () => {
+    setNewClassName("");
+    setShowClassNameValidation(false);
+    setOnboardingStep(0);
+    setSelectedDepartment("");
+    setSelectedCatalogCourseId("");
+    setStartingPoint("syllabus");
+    setCourseMaterial("");
+    setGraphGranularity("standard");
+    setSelectedSourceClassId("");
+    setSourceLessons([]);
+    setSelectedLessonIds([]);
+    setAddClassDialogOpen(false);
+  };
+
+  const showNotification = (message: string, type: "success" | "error") => {
     setNotification({
       show: true,
       message,
       type,
-    })
-  }
+    });
+  };
 
   const handleCloseNotification = () => {
-    setNotification({ ...notification, show: false })
-  }
+    setNotification({ ...notification, show: false });
+  };
 
-  const handleCreateClass = async () => {
-    const trimmedName = newClassName.trim()
+  const validateClassInfo = () => {
+    setShowClassNameValidation(true);
+    const trimmedName = newClassName.trim();
 
     if (!trimmedName) {
-      showNotification('Class name cannot be empty', 'error')
-      return
+      showNotification("Class name cannot be empty", "error");
+      return false;
     }
 
-    // Only allow letters, numbers, spaces, and basic punctuation (no colons, slashes, etc.)
-    const validNameRegex = /^[a-zA-Z0-9\s\-_&().]+$/
-    if (!validNameRegex.test(trimmedName)) {
+    if (!CLASS_NAME_PATTERN.test(trimmedName)) {
       showNotification(
-        'Class name contains invalid characters. Only letters, numbers, spaces, hyphens, underscores, and parentheses are allowed.',
-        'error'
-      )
-      return
+        "Class name contains invalid characters. Only letters, numbers, spaces, hyphens, underscores, ampersands, periods, and parentheses are allowed.",
+        "error",
+      );
+      return false;
     }
 
     if (classes.includes(trimmedName)) {
-      showNotification('Class already exists', 'error')
-      return
+      showNotification("Class already exists", "error");
+      return false;
     }
+
+    if (!selectedCatalogCourseId) {
+      showNotification("Select a catalog course first", "error");
+      return false;
+    }
+
+    return true;
+  };
+
+  const canAdvanceFromStartingPoint = () => {
+    if (startingPoint === "syllabus" && !courseMaterial.trim()) {
+      showNotification("Paste a syllabus or course outline first", "error");
+      return false;
+    }
+
+    if (startingPoint === "copy" && !selectedSourceClassId) {
+      showNotification("Select an existing course graph first", "error");
+      return false;
+    }
+
+    return true;
+  };
+
+  const handleNextStep = () => {
+    if (onboardingStep === 0 && !validateClassInfo()) return;
+    if (onboardingStep === 1 && !canAdvanceFromStartingPoint()) return;
+    setOnboardingStep((step) => Math.min(step + 1, 2));
+  };
+
+  const handleBackStep = () => {
+    setOnboardingStep((step) => Math.max(step - 1, 0));
+  };
+
+  const handleToggleLesson = (lessonId: number) => {
+    setSelectedLessonIds((prev) =>
+      prev.includes(lessonId)
+        ? prev.filter((id) => id !== lessonId)
+        : [...prev, lessonId],
+    );
+  };
+
+  const handleCreateClass = async () => {
+    if (!validateClassInfo() || !canAdvanceFromStartingPoint()) return;
+
+    const trimmedName = newClassName.trim();
 
     try {
-      const response = await createNewClass(trimmedName, classLevel)
+      setCreatingClass(true);
+      const response = await createNewClass(trimmedName, classLevel, {
+        catalogCourseId: Number(selectedCatalogCourseId),
+        startingPoint,
+        courseMaterial,
+        graphGranularity,
+        sourceClassId:
+          startingPoint === "copy" ? Number(selectedSourceClassId) : null,
+        selectedLessonIds:
+          startingPoint === "copy" ? selectedLessonIds : undefined,
+      });
 
       if (!response.success) {
-        showNotification('Error creating class', 'error')
-        return
+        showNotification(
+          typeof response.error === "string"
+            ? response.error
+            : "Error creating class",
+          "error",
+        );
+        return;
       }
 
-      setClasses([...classes, trimmedName])
-      setNewClassName('')
-      setAddClassDialogOpen(false)
-      showNotification('Class created successfully!', 'success')
+      setClasses([...classes, trimmedName]);
+      showNotification(
+        response.warning || "Course created. Review the graph next.",
+        response.warning ? "error" : "success",
+      );
+      resetOnboardingDialog();
+      setNavigatingToClass(trimmedName);
+      router.push(`/classes/${trimmedName}/knowledge-graph`);
     } catch (error) {
-      showNotification('Error creating class', 'error')
+      showNotification("Error creating class", "error");
+    } finally {
+      setCreatingClass(false);
     }
-  }
+  };
 
   useEffect(() => {
     const fetchClasses = async () => {
-      setIsLoading(true)
+      setIsLoading(true);
       try {
-        const data = await getClassData()
-        setClasses(data)
+        const data = await getClassData();
+        setClasses(data);
       } catch (error) {
-        showNotification('Error loading classes', 'error')
+        showNotification("Error loading classes", "error");
       } finally {
-        setIsLoading(false)
+        setIsLoading(false);
       }
+    };
+    fetchClasses();
+  }, []);
+
+  useEffect(() => {
+    if (!addClassDialogOpen) return;
+
+    const fetchCatalogCourses = async () => {
+      setCatalogLoading(true);
+      try {
+        const courses = await getCatalogCourses();
+        setCatalogCourses(courses);
+      } catch (error) {
+        showNotification("Error loading catalog courses", "error");
+      } finally {
+        setCatalogLoading(false);
+      }
+    };
+
+    fetchCatalogCourses();
+  }, [addClassDialogOpen]);
+
+  useEffect(() => {
+    if (!selectedCatalogCourseId) {
+      setGraphSources([]);
+      setSelectedSourceClassId("");
+      return;
     }
-    fetchClasses()
-  }, [])
+
+    const fetchGraphSources = async () => {
+      setGraphSourcesLoading(true);
+      try {
+        const sources = await getGraphSourcesForCatalogCourse(
+          Number(selectedCatalogCourseId),
+        );
+        setGraphSources(sources);
+      } catch (error) {
+        showNotification("Error loading graph sources", "error");
+      } finally {
+        setGraphSourcesLoading(false);
+      }
+    };
+
+    fetchGraphSources();
+  }, [selectedCatalogCourseId]);
+
+  useEffect(() => {
+    if (!selectedSourceClassId) {
+      setSourceLessons([]);
+      setSelectedLessonIds([]);
+      return;
+    }
+
+    const fetchSourceLessons = async () => {
+      setSourceLessonsLoading(true);
+      try {
+        const lessons = await getLessonsForGraphSource(
+          Number(selectedSourceClassId),
+        );
+        setSourceLessons(lessons);
+        setSelectedLessonIds(lessons.map((lesson) => lesson.lessonId));
+      } catch (error) {
+        showNotification("Error loading source lessons", "error");
+      } finally {
+        setSourceLessonsLoading(false);
+      }
+    };
+
+    fetchSourceLessons();
+  }, [selectedSourceClassId]);
 
   const handleClassNavigation = (className: string) => {
-    setNavigatingToClass(className)
-    router.push(`/classes/${className}/lessons`)
-  }
+    setNavigatingToClass(className);
+    router.push(`/classes/${className}/lessons`);
+  };
+
+  const selectedCatalogCourse = catalogCourses.find(
+    (course) => course.catalogCourseId === Number(selectedCatalogCourseId),
+  );
+  const selectedGraphSource = graphSources.find(
+    (source) => source.classId === Number(selectedSourceClassId),
+  );
+  const departmentOptions = Array.from(
+    new Set(
+      catalogCourses.map((course) =>
+        (course.department || course.code.split(" ")[0] || "Other").trim(),
+      ),
+    ),
+  ).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+  const filteredCatalogCourses = selectedDepartment
+    ? catalogCourses.filter(
+        (course) =>
+          (course.department || course.code.split(" ")[0] || "Other").trim() ===
+          selectedDepartment,
+      )
+    : [];
+  const onboardingSteps = ["Course Info", "Course Creation", "Review"];
 
   return (
     <>
-      <NavbarWithSideMenu className="" displaySideMenu={false} />
+      <AppNavigation />
       {navigatingToClass && (
         <Box
           sx={{
-            position: 'fixed',
+            position: "fixed",
             top: 0,
             left: 0,
             right: 0,
             bottom: 0,
-            backgroundColor: isDarkMode ? 'rgba(0, 0, 0, 0.7)' : 'rgba(255, 255, 255, 0.7)',
+            backgroundColor: isDarkMode
+              ? "rgba(0, 0, 0, 0.7)"
+              : "rgba(255, 255, 255, 0.7)",
             zIndex: theme.zIndex.drawer + 2,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
             gap: 2,
           }}
         >
           <CircularProgress size={40} />
-          <Typography variant="h6" color={isDarkMode ? 'white' : 'inherit'}>
+          <Typography variant="h6" color={isDarkMode ? "white" : "inherit"}>
             Loading {navigatingToClass}...
           </Typography>
         </Box>
@@ -264,9 +505,9 @@ const Classes = () => {
       <Container maxWidth="lg" sx={{ marginTop: 10, marginBottom: 4 }}>
         <Box
           sx={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
             marginBottom: 4,
           }}
         >
@@ -291,42 +532,51 @@ const Classes = () => {
               <Grid item xs={12} sm={6} md={4} lg={3} key={index}>
                 <Card
                   elevation={3}
-                  onMouseEnter={() => router.prefetch(`/classes/${className}/lessons`)}
+                  onMouseEnter={() =>
+                    router.prefetch(`/classes/${className}/lessons`)
+                  }
                   sx={{
-                    height: '100%',
-                    transition: 'transform 0.2s, box-shadow 0.2s',
-                    '&:hover': {
-                      transform: 'translateY(-5px)',
+                    height: "100%",
+                    transition: "transform 0.2s, box-shadow 0.2s",
+                    "&:hover": {
+                      transform: "translateY(-5px)",
                       boxShadow: isDarkMode
-                        ? '0 10px 20px rgba(0,0,0,0.4)'
-                        : '0 10px 20px rgba(0,0,0,0.1)',
+                        ? "0 10px 20px rgba(0,0,0,0.4)"
+                        : "0 10px 20px rgba(0,0,0,0.1)",
                     },
                   }}
                 >
                   <CardActionArea
-                    onClick={() => handleClassNavigation(className || '')}
+                    onClick={() => handleClassNavigation(className || "")}
                     sx={{
-                      height: '100%',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
+                      height: "100%",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
                     }}
                   >
                     <Box
                       sx={{
-                        backgroundColor: getClassColor(className || '', index),
-                        color: 'white',
-                        width: '100%',
+                        backgroundColor: getClassColor(className || "", index),
+                        color: "white",
+                        width: "100%",
                         py: 3,
-                        display: 'flex',
-                        justifyContent: 'center',
-                        alignItems: 'center',
+                        display: "flex",
+                        justifyContent: "center",
+                        alignItems: "center",
                       }}
                     >
                       <School fontSize="large" />
                     </Box>
-                    <CardContent sx={{ flexGrow: 1, textAlign: 'center', width: '100%' }}>
-                      <Typography variant="h6" component="h2" fontWeight="bold" gutterBottom>
+                    <CardContent
+                      sx={{ flexGrow: 1, textAlign: "center", width: "100%" }}
+                    >
+                      <Typography
+                        variant="h6"
+                        component="h2"
+                        fontWeight="bold"
+                        gutterBottom
+                      >
                         {className}
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
@@ -341,100 +591,487 @@ const Classes = () => {
         ) : (
           <Box
             sx={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              height: '50vh',
-              backgroundColor: isDarkMode ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)',
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              height: "50vh",
+              backgroundColor: isDarkMode
+                ? "rgba(255,255,255,0.03)"
+                : "rgba(0,0,0,0.03)",
               borderRadius: 2,
               p: 3,
             }}
           >
-            <School fontSize="large" color="disabled" sx={{ marginBottom: 2 }} />
+            <School
+              fontSize="large"
+              color="disabled"
+              sx={{ marginBottom: 2 }}
+            />
             <Typography variant="h6" color="text.secondary" gutterBottom>
               No classes yet
             </Typography>
-            <Typography variant="body2" color="text.secondary" align="center" marginBottom={3}>
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              align="center"
+              marginBottom={3}
+            >
               Create your first class to get started with Knowledge Grapht
             </Typography>
           </Box>
         )}
       </Container>
 
-      <Dialog open={addClassDialogOpen} onClose={handleCloseAddClassDialog} fullWidth maxWidth="sm">
-        <DialogTitle>Create New Class</DialogTitle>
-        <DialogContent>
-          <TextField
-            id="class-name"
-            label="Class Name"
-            placeholder="e.g., CMSI 3300"
-            variant="outlined"
-            value={newClassName}
-            onChange={e => {
-              const value = e.target.value
-              // Block special characters as user types
-              if (value === '' || /^[a-zA-Z0-9\s\-_&().]*$/.test(value)) {
-                setNewClassName(value)
-              }
-            }}
-            fullWidth
-            margin="normal"
-            autoFocus
-            required
-            error={
-              newClassName.trim() === '' ||
-              (newClassName.length > 0 && !/^[a-zA-Z0-9\s\-_&().]+$/.test(newClassName))
-            }
-            helperText={
-              newClassName.trim() === ''
-                ? 'Class name is required'
-                : newClassName.length > 0 && !/^[a-zA-Z0-9\s\-_&().]+$/.test(newClassName)
-                ? 'Only letters, numbers, spaces, hyphens, underscores, and parentheses allowed'
-                : ''
-            }
-          />
+      <Dialog
+        open={addClassDialogOpen}
+        onClose={handleCloseAddClassDialog}
+        fullWidth
+        maxWidth="md"
+      >
+        <DialogTitle>Create Course</DialogTitle>
+        {creatingClass && <LinearProgress />}
+        <DialogContent dividers>
+          <Stepper activeStep={onboardingStep} sx={{ mb: 3 }}>
+            {onboardingSteps.map((label) => (
+              <Step key={label}>
+                <StepLabel>{label}</StepLabel>
+              </Step>
+            ))}
+          </Stepper>
+
+          {onboardingStep === 0 && (
+            <Stack spacing={3}>
+              <FormControl fullWidth disabled={catalogLoading || creatingClass}>
+                <InputLabel id="catalog-department-label">
+                  Department
+                </InputLabel>
+                <Select
+                  labelId="catalog-department-label"
+                  label="Department"
+                  value={selectedDepartment}
+                  onChange={(event) => {
+                    setSelectedDepartment(event.target.value);
+                    setSelectedCatalogCourseId("");
+                    setSelectedSourceClassId("");
+                    setSourceLessons([]);
+                    setSelectedLessonIds([]);
+                  }}
+                >
+                  {departmentOptions.map((department) => (
+                    <MenuItem key={department} value={department}>
+                      {department}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <FormControl
+                fullWidth
+                disabled={
+                  catalogLoading ||
+                  creatingClass ||
+                  !selectedDepartment ||
+                  filteredCatalogCourses.length === 0
+                }
+              >
+                <InputLabel id="catalog-course-label">
+                  Catalog Course
+                </InputLabel>
+                <Select
+                  labelId="catalog-course-label"
+                  label="Catalog Course"
+                  value={selectedCatalogCourseId}
+                  onChange={(event) => {
+                    setSelectedCatalogCourseId(Number(event.target.value));
+                    setSelectedSourceClassId("");
+                    setSourceLessons([]);
+                    setSelectedLessonIds([]);
+                  }}
+                >
+                  {filteredCatalogCourses.map((course) => (
+                    <MenuItem
+                      key={course.catalogCourseId}
+                      value={course.catalogCourseId}
+                    >
+                      {course.code} - {course.title}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <TextField
+                id="class-name"
+                label="Class Name"
+                placeholder="Name your class: maybe Fall 2026 CMSI XXXX?"
+                variant="outlined"
+                value={newClassName}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  if (value === "" || CLASS_NAME_PATTERN.test(value)) {
+                    setNewClassName(value);
+                    setShowClassNameValidation(true);
+                  }
+                }}
+                fullWidth
+                autoFocus
+                required
+                disabled={creatingClass}
+                error={
+                  showClassNameValidation &&
+                  (newClassName.trim() === "" ||
+                    !CLASS_NAME_PATTERN.test(newClassName))
+                }
+                helperText={
+                  showClassNameValidation
+                    ? newClassName.trim() === ""
+                      ? "Class name is required"
+                      : !CLASS_NAME_PATTERN.test(newClassName)
+                        ? "Only letters, numbers, spaces, hyphens, underscores, ampersands, periods, and parentheses are allowed"
+                        : ""
+                    : ""
+                }
+              />
+
+              <Stack spacing={1} sx={{ px: 2, pb: 2 }}>
+                <Typography variant="subtitle2">Class Level</Typography>
+                <Slider
+                  value={classLevel}
+                  onChange={(_, v) => setClassLevel(Number(v))}
+                  step={1}
+                  min={0}
+                  max={3}
+                  marks={LEVELS}
+                  valueLabelDisplay="auto"
+                  disabled={creatingClass}
+                  sx={{
+                    mx: 2,
+                    width: "calc(100% - 32px)",
+                  }}
+                />
+              </Stack>
+            </Stack>
+          )}
+
+          {onboardingStep === 1 && (
+            <Stack spacing={3}>
+              <RadioGroup
+                value={startingPoint}
+                onChange={(event) =>
+                  setStartingPoint(event.target.value as StartingPoint)
+                }
+              >
+                <Grid container spacing={2}>
+                  {[
+                    {
+                      value: "syllabus",
+                      title: "AI-Generated Graph",
+                      description:
+                        "Paste a syllabus or course outline and generate a starter graph.",
+                    },
+                    {
+                      value: "copy",
+                      title: "Use an existing course",
+                      description:
+                        "Copy a graph from another class tagged with this catalog course.",
+                    },
+                    {
+                      value: "scratch",
+                      title: "Start from scratch",
+                      description:
+                        "Create a blank starter graph and build it manually.",
+                    },
+                  ].map((option) => (
+                    <Grid item xs={12} md={4} key={option.value}>
+                      <Card
+                        variant={
+                          startingPoint === option.value
+                            ? "elevation"
+                            : "outlined"
+                        }
+                        elevation={startingPoint === option.value ? 4 : 0}
+                        sx={{
+                          height: "100%",
+                          borderColor:
+                            startingPoint === option.value
+                              ? "primary.main"
+                              : "divider",
+                        }}
+                      >
+                        <CardActionArea
+                          onClick={() =>
+                            setStartingPoint(option.value as StartingPoint)
+                          }
+                          sx={{ height: "100%", alignItems: "stretch" }}
+                        >
+                          <CardContent>
+                            <FormControlLabel
+                              value={option.value}
+                              control={<Radio />}
+                              label={
+                                <Typography fontWeight="bold">
+                                  {option.title}
+                                </Typography>
+                              }
+                              sx={{ alignItems: "flex-start", m: 0 }}
+                            />
+                            <Typography
+                              variant="body2"
+                              color="text.secondary"
+                              sx={{ mt: 1 }}
+                            >
+                              {option.description}
+                            </Typography>
+                          </CardContent>
+                        </CardActionArea>
+                      </Card>
+                    </Grid>
+                  ))}
+                </Grid>
+              </RadioGroup>
+
+              {startingPoint === "syllabus" && (
+                <Stack spacing={2}>
+                  <FormControl fullWidth>
+                    <InputLabel id="graph-granularity-label">
+                      Graph Detail
+                    </InputLabel>
+                    <Select
+                      labelId="graph-granularity-label"
+                      label="Graph Detail"
+                      value={graphGranularity}
+                      onChange={(event) =>
+                        setGraphGranularity(
+                          event.target.value as GraphGranularity,
+                        )
+                      }
+                    >
+                      <MenuItem value="simple">Simple</MenuItem>
+                      <MenuItem value="standard">Standard</MenuItem>
+                      <MenuItem value="detailed">Detailed</MenuItem>
+                    </Select>
+                  </FormControl>
+                  <TextField
+                    label="Syllabus or Course Outline"
+                    value={courseMaterial}
+                    onChange={(event) => setCourseMaterial(event.target.value)}
+                    fullWidth
+                    multiline
+                    minRows={8}
+                    placeholder="Paste the course syllabus, topics, units, or weekly outline."
+                  />
+                </Stack>
+              )}
+
+              {startingPoint === "copy" && (
+                <Stack spacing={2}>
+                  {graphSourcesLoading ? (
+                    <LinearProgress />
+                  ) : graphSources.length === 0 ? (
+                    <Alert severity="info">
+                      No readable existing graphs are tagged with this catalog
+                      course yet.
+                    </Alert>
+                  ) : (
+                    <FormControl fullWidth>
+                      <InputLabel id="graph-source-label">
+                        Existing Graph
+                      </InputLabel>
+                      <Select
+                        labelId="graph-source-label"
+                        label="Existing Graph"
+                        value={selectedSourceClassId}
+                        onChange={(event) =>
+                          setSelectedSourceClassId(Number(event.target.value))
+                        }
+                      >
+                        {graphSources.map((source) => (
+                          <MenuItem key={source.classId} value={source.classId}>
+                            {source.className} - {source.topicCount} topics,{" "}
+                            {source.lessonCount} lessons
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  )}
+
+                  {selectedSourceClassId && (
+                    <Box>
+                      <Stack
+                        direction="row"
+                        justifyContent="space-between"
+                        alignItems="center"
+                        sx={{ mb: 1 }}
+                      >
+                        <Typography variant="subtitle2">
+                          Include Lessons
+                        </Typography>
+                        <Stack direction="row" spacing={1}>
+                          <Button
+                            size="small"
+                            onClick={() =>
+                              setSelectedLessonIds(
+                                sourceLessons.map((lesson) => lesson.lessonId),
+                              )
+                            }
+                          >
+                            Select all
+                          </Button>
+                          <Button
+                            size="small"
+                            onClick={() => setSelectedLessonIds([])}
+                          >
+                            Deselect all
+                          </Button>
+                        </Stack>
+                      </Stack>
+
+                      {sourceLessonsLoading ? (
+                        <LinearProgress />
+                      ) : sourceLessons.length === 0 ? (
+                        <Alert severity="info">
+                          This graph has no lessons to copy.
+                        </Alert>
+                      ) : (
+                        <Stack spacing={1}>
+                          {sourceLessons.map((lesson) => (
+                            <Box
+                              key={lesson.lessonId}
+                              sx={{
+                                border: "1px solid",
+                                borderColor: "divider",
+                                borderRadius: 1,
+                                p: 1.5,
+                              }}
+                            >
+                              <FormControlLabel
+                                control={
+                                  <Checkbox
+                                    checked={selectedLessonIds.includes(
+                                      lesson.lessonId,
+                                    )}
+                                    onChange={() =>
+                                      handleToggleLesson(lesson.lessonId)
+                                    }
+                                  />
+                                }
+                                label={
+                                  <Box>
+                                    <Typography fontWeight="medium">
+                                      {lesson.name}
+                                    </Typography>
+                                    <Typography
+                                      variant="body2"
+                                      color="text.secondary"
+                                    >
+                                      {lesson.topics.length} topics,{" "}
+                                      {lesson.questionCount} questions
+                                    </Typography>
+                                  </Box>
+                                }
+                              />
+                            </Box>
+                          ))}
+                        </Stack>
+                      )}
+                    </Box>
+                  )}
+                </Stack>
+              )}
+            </Stack>
+          )}
+
+          {onboardingStep === 2 && (
+            <Stack spacing={2}>
+              <Box>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Catalog Course
+                </Typography>
+                <Typography>
+                  {selectedCatalogCourse
+                    ? `${selectedCatalogCourse.code} - ${selectedCatalogCourse.title}`
+                    : "None selected"}
+                </Typography>
+              </Box>
+              <Divider />
+              <Box>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Class
+                </Typography>
+                <Typography>{newClassName.trim()}</Typography>
+              </Box>
+              <Divider />
+              <Box>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Starting Point
+                </Typography>
+                {startingPoint === "copy" ? (
+                  <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+                    <Chip label="Copy graph" />
+                    <Chip
+                      label={`${selectedLessonIds.length} lessons selected`}
+                      color={selectedLessonIds.length ? "primary" : "default"}
+                    />
+                    {selectedGraphSource && (
+                      <Chip label={selectedGraphSource.className} />
+                    )}
+                  </Stack>
+                ) : startingPoint === "syllabus" ? (
+                  <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+                    <Chip label="Generate graph" />
+                    <Chip label={`${graphGranularity} detail`} />
+                  </Stack>
+                ) : (
+                  <Chip label="Start from scratch" sx={{ mt: 1 }} />
+                )}
+              </Box>
+              <Alert severity="info">
+                After creation, you will review the graph before adding or
+                publishing course content.
+              </Alert>
+            </Stack>
+          )}
         </DialogContent>
-        <Stack
-          spacing={1}
-          sx={{
-            mt: 2,
-            mb: 6,
-            px: 5,
-          }}
-        >
-          <Typography variant="subtitle2">Class Level</Typography>
-          <Slider
-            value={classLevel}
-            onChange={(_, v) => setClassLevel(Number(v))}
-            step={1}
-            min={0}
-            max={3}
-            marks={LEVELS}
-            valueLabelDisplay="auto"
-          />
-        </Stack>
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={handleCancelAddClass} variant="text">
+          <Button
+            onClick={handleCancelAddClass}
+            variant="text"
+            disabled={creatingClass}
+          >
             Cancel
           </Button>
-          <Button
-            onClick={handleCreateClass}
-            variant="contained"
-            disabled={newClassName.trim() === ''}
-          >
-            Create Class
-          </Button>
+          {onboardingStep > 0 && (
+            <Button onClick={handleBackStep} disabled={creatingClass}>
+              Back
+            </Button>
+          )}
+          {onboardingStep < 2 ? (
+            <Button onClick={handleNextStep} variant="contained">
+              Continue
+            </Button>
+          ) : (
+            <Button
+              onClick={handleCreateClass}
+              variant="contained"
+              disabled={creatingClass}
+            >
+              {creatingClass ? "Creating..." : "Create Course"}
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
 
-      <Snackbar open={notification.show} autoHideDuration={5000} onClose={handleCloseNotification}>
+      <Snackbar
+        open={notification.show}
+        autoHideDuration={5000}
+        onClose={handleCloseNotification}
+      >
         <Alert severity={notification.type} onClose={handleCloseNotification}>
           {notification.message}
         </Alert>
       </Snackbar>
     </>
-  )
-}
+  );
+};
 
-export default Classes
+export default Classes;

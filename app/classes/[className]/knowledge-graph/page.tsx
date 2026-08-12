@@ -29,6 +29,7 @@ import {
 } from "@/hooks/knowledgeGraphHooks";
 import {
   getKnowledgeGraphData,
+  getTopicNodeReferences,
   updateKnowledgeGraph,
 } from "@/app/classes/[className]/knowledge-graph/actions";
 import EditableNode from "@/components/custom-graph-nodes/editable-node";
@@ -136,6 +137,51 @@ const KnowledgeGraph = ({ className }: { className: string }) => {
   const onConnectEnd = (...args: any[]) => {
     (baseOnConnectEnd as any)(...args);
     if (inEditMode) setDirty(true);
+  };
+
+  const onBeforeDelete = async ({ nodes: nodesToDelete }: { nodes: Node[] }) => {
+    if (!nodesToDelete.length) return true;
+
+    const result = await getTopicNodeReferences(
+      className,
+      nodesToDelete.map((node) => String(node.id)),
+    );
+
+    if (!result.success) {
+      showToast(
+        typeof result.error === "string"
+          ? result.error
+          : "Unable to verify topic references",
+        "error",
+      );
+      return false;
+    }
+
+    if (result.referencedNodeIds?.length) {
+      const references = [
+        result.lessonCount
+          ? `${result.lessonCount} lesson${result.lessonCount === 1 ? "" : "s"}`
+          : "",
+        result.questionCount
+          ? `${result.questionCount} question${result.questionCount === 1 ? "" : "s"}`
+          : "",
+      ].filter(Boolean);
+      showToast(
+        `This topic cannot be deleted because it is used by ${references.join(" and ")}. Reassign that content first.`,
+        "error",
+      );
+      return false;
+    }
+
+    if (result.unresolvedReferenceCount) {
+      showToast(
+        "This topic cannot be deleted until older lesson and question topics are reviewed and saved.",
+        "error",
+      );
+      return false;
+    }
+
+    return true;
   };
 
   const cloneGraphData = (graph: StoredGraphData): StoredGraphData =>
@@ -421,6 +467,7 @@ const KnowledgeGraph = ({ className }: { className: string }) => {
               onConnectEnd={onConnectEnd}
               nodeTypes={nodeTypes}
               onNodesDelete={handleNodesDelete}
+              onBeforeDelete={onBeforeDelete}
               nodesDraggable={interactionProps.nodesDraggable}
               nodesConnectable={interactionProps.nodesConnectable}
               elementsSelectable={interactionProps.elementsSelectable}
@@ -489,6 +536,7 @@ const KnowledgeGraph = ({ className }: { className: string }) => {
 
             <GenerateGraph
               className={className}
+              hasExistingGraph={Boolean(savedGraphData?.nodes?.length)}
               onSaved={(graph) => {
                 applyGraphData(graph, true);
                 showToast("Generated graph applied");

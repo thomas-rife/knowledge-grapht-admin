@@ -3,8 +3,7 @@
 import {
   Box,
   Typography,
-  Tooltip,
-  IconButton,
+  Button,
   Container,
   Snackbar,
   Alert,
@@ -16,6 +15,7 @@ import AddLessonDialog from "@/app/classes/[className]/lessons/add-lesson-dialog
 import LessonDataGrid from "@/app/classes/[className]/lessons/lesson-data-grid";
 import ClassConentHeaderSkeleton from "@/components/skeletons/class-content-header-skeleton";
 import { createClient } from "@/utils/supabase/client";
+import CustomToolbar from "@/components/add-class-content/custom-toolbar";
 
 const Lessons = ({ params }: { params: { className: string } }) => {
   const [open, setOpen] = useState<boolean>(false);
@@ -106,7 +106,7 @@ const Lessons = ({ params }: { params: { className: string } }) => {
     <Container
       maxWidth="xl"
       sx={{
-        height: "100vh",
+        height: "100%",
         display: "flex",
         flexDirection: "column",
         paddingTop: 2,
@@ -121,36 +121,46 @@ const Lessons = ({ params }: { params: { className: string } }) => {
             sx={{
               padding: 1,
               display: "flex",
-              flexDirection: "column",
+              justifyContent: "space-between",
+              alignItems: { xs: "flex-start", sm: "flex-end" },
+              flexDirection: { xs: "column", sm: "row" },
               gap: 2,
             }}
           >
-            <Typography variant="h4">
-              <strong>{params.className.replace(/%20/g, " ")}</strong>
-            </Typography>
             <Box
               sx={{
                 display: "flex",
-                alignItems: "center",
-                gap: 1,
+                flexDirection: "column",
+                gap: 0.5,
               }}
             >
-              <Typography variant="h5">Lessons</Typography>
-              <Tooltip arrow title="Create New Lesson">
-                <IconButton
-                  onClick={async () => {
-                    await handleLessonDialogOpen();
-                  }}
-                >
-                  {" "}
-                  <AddCircleOutline />
-                </IconButton>
-              </Tooltip>
+              <Typography variant="h4" component="h1" fontWeight={700}>
+                {params.className.replace(/%20/g, " ")}
+              </Typography>
+              <Typography variant="h6" color="text.secondary">
+                Lessons
+              </Typography>
+            </Box>
+            <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+              <CustomToolbar
+                className={params.className}
+                onImported={() => {
+                  setDataLoading(true);
+                  setRefreshGrid((current) => current + 1);
+                }}
+              />
+              <Button
+                variant="contained"
+                startIcon={<AddCircleOutline />}
+                onClick={handleLessonDialogOpen}
+              >
+                Create lesson
+              </Button>
             </Box>
           </Box>
         </>
       )}
-      <Box sx={{ flex: 1, minHeight: 0 }}>
+      <Box sx={{ flex: 1, minHeight: 0, px: 1, pt: 2, pb: 4 }}>
         <AddLessonDialog
           className={params.className}
           open={open}

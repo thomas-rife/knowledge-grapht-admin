@@ -1,31 +1,30 @@
-import { Box } from '@mui/material'
-import { ReactNode } from 'react'
-import NavbarWithSideMenu from '@/components/nav-and-sidemenu/navbar-with-sidemenu'
+import { Box } from "@mui/material";
+import { ReactNode } from "react";
+import AppNavigation from "@/components/nav-and-sidemenu/app-navigation";
 
 const ClassPageLayout = ({
   children,
   params,
 }: {
-  children: ReactNode
-  params: { className: string }
+  children: ReactNode;
+  params: { className: string };
 }) => {
   return (
     <>
-      <NavbarWithSideMenu className={params.className} displaySideMenu />
+      <AppNavigation className={params.className} showClassNavigation />
       <Box
         sx={{
-          marginTop: '64px', // to compensate for the navbar/sidemenu
-          marginLeft: '65px', // to compensate for the navbar/sidemenu
-          display: 'flex',
-          flexDirection: 'column',
-          height: 'calc(100vh - 64px)',
-          width: 'calc(100vw - 65px)',
+          marginTop: "116px",
+          display: "flex",
+          flexDirection: "column",
+          height: "calc(100vh - 116px)",
+          width: "100%",
         }}
       >
         {children}
       </Box>
     </>
-  )
-}
+  );
+};
 
-export default ClassPageLayout
+export default ClassPageLayout;

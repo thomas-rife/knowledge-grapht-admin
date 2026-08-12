@@ -15,7 +15,7 @@ import {
   Box,
 } from "@mui/material";
 import { useState } from "react";
-import { Handle, Position } from "@xyflow/react";
+import { Handle, Position, useReactFlow } from "@xyflow/react";
 import { useNodeLabelUpdate } from "@/hooks/knowledgeGraphHooks";
 
 interface ReactFlowData {
@@ -46,6 +46,7 @@ const EditableNode = ({
   const [nodeName, setNodeName] = useState(data.label);
   const [isValid, setIsValid] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
+  const { deleteElements } = useReactFlow();
   const updateNodeLabel = useNodeLabelUpdate(
     data.setReactFlowData,
     id,
@@ -90,17 +91,8 @@ const EditableNode = ({
     setOpenNodeDialog(true);
   };
 
-  const handleDeleteNode = () => {
-    data.setReactFlowData((prev: ReactFlowData) => {
-      const newNodes = prev.reactFlowNodes.filter(
-        (node: { id: string }) => node.id !== id,
-      );
-      const newEdges = prev.reactFlowEdges.filter(
-        (edge: { source: string; target: string }) =>
-          edge.source !== id && edge.target !== id,
-      );
-      return { reactFlowNodes: newNodes, reactFlowEdges: newEdges };
-    });
+  const handleDeleteNode = async () => {
+    await deleteElements({ nodes: [{ id }] });
   };
 
   const handleCloseDialog = () => setOpenNodeDialog(false);

@@ -7,6 +7,12 @@ import {
 } from "@/app/classes/[className]/lessons/[lessonName]/actions";
 import { Question } from "@/types/content.types";
 import { PostgrestError } from "@supabase/supabase-js";
+import { createDefaultAnswerOptions } from "@/components/questions/question-editor";
+
+const createDefaultQuestionOptionObjects = () =>
+  createDefaultAnswerOptions().map((value, index) => ({
+    [`option${index + 1}`]: value,
+  }));
 
 interface QuestionContextType {
   questionID: number | null;
@@ -47,7 +53,7 @@ const initialContext: QuestionContextType = {
   setQuestionPrompt: () => {},
   questionSnippet: "",
   setQuestionSnippet: () => {},
-  questionOptions: [],
+  questionOptions: createDefaultQuestionOptionObjects(),
   setQuestionOptions: () => [],
   correctAnswer: "",
   setCorrectAnswer: () => {},
@@ -72,7 +78,9 @@ export const QuestionContextProvider = ({
   const [questionType, setQuestionType] = useState("");
   const [questionPrompt, setQuestionPrompt] = useState("");
   const [questionSnippet, setQuestionSnippet] = useState("");
-  const [questionOptions, setQuestionOptions] = useState<any>([]);
+  const [questionOptions, setQuestionOptions] = useState<any>(
+    createDefaultQuestionOptionObjects(),
+  );
   const [correctAnswer, setCorrectAnswer] = useState("");
   const [topicsCovered, setTopicsCovered] = useState<string[]>([]);
   const [imageUrl, setImageUrl] = useState("");
@@ -82,7 +90,7 @@ export const QuestionContextProvider = ({
     setQuestionType("");
     setQuestionPrompt("");
     setQuestionSnippet("");
-    setQuestionOptions([]);
+    setQuestionOptions(createDefaultQuestionOptionObjects());
     setCorrectAnswer("");
     setTopicsCovered([]);
     setImageUrl("");
@@ -108,11 +116,12 @@ export const QuestionContextProvider = ({
 
     // UPDATE existing question
     if (questionID) {
-      const result = await updateQuestion(questionID, {
+      const result = await updateQuestion(questionID, className, {
         questionType: questionType,
         prompt: questionPrompt,
         snippet: questionSnippet,
         topics: topicsCovered,
+        topicNodeIds: topicsCovered,
         answerOptions: questionOptions, // Send raw - let updateQuestion handle it
         answer: correctAnswer,
         image_url: finalImageUrl,
@@ -136,6 +145,7 @@ export const QuestionContextProvider = ({
       prompt: questionPrompt,
       snippet: questionSnippet,
       topics: topicsCovered,
+      topicNodeIds: topicsCovered,
       answerOptions: formattedForCreation,
       answer: correctAnswer,
       image_url: finalImageUrl,

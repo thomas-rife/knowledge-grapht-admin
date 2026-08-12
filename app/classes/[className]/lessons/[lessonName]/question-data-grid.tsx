@@ -1,8 +1,18 @@
 "use client";
 
-import { type Dispatch, type SetStateAction, useState, useEffect } from "react";
+import {
+  type Dispatch,
+  type SetStateAction,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import {
   Box,
+  Chip,
+  Collapse,
+  Divider,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -10,52 +20,129 @@ import {
   Button,
   TextField,
   Stack,
+  Alert,
+  CircularProgress,
+  IconButton,
+  InputAdornment,
   FormControl,
   InputLabel,
-  Select,
   MenuItem,
+  Paper,
+  Select,
+  Skeleton,
+  TablePagination,
+  Tooltip,
+  Typography,
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
-import {
-  GridRowsProp,
-  DataGrid,
-  GridColDef,
-  GridToolbar,
-  GridActionsCellItem,
-} from "@mui/x-data-grid";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutline";
+import UploadFileIcon from "@mui/icons-material/UploadFile";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import SearchIcon from "@mui/icons-material/Search";
+import { useRouter } from "next/navigation";
 import {
   getLessonQuestions,
   deleteQuestionFromLesson,
   createNewQuestion,
-  getClassIdByName,
   importQuestionsFromFile,
-  getLessonIdByName,
+  generateQuestionFromPrompt,
 } from "@/app/classes/[className]/lessons/[lessonName]/actions";
-import DataGridSkeleton from "@/components/skeletons/data-grid-skeleton";
+import { getQuestionTopicOptions } from "@/app/classes/[className]/lessons/actions";
 import { useQuestionContext } from "@/contexts/question-context";
-import { generateQuestionLLM } from "./actions";
-import { useParams } from "next/navigation";
+import { GraphTopic } from "@/types/content.types";
+import TopicPicker from "@/components/questions/topic-picker";
+import QuestionEditor, {
+  createDefaultAnswerOptions,
+} from "@/components/questions/question-editor";
 
-interface TokenObject {
-  text: string;
-  position?: [number, number];
-  range?: number[];
-  isDistractor?: boolean;
-}
+type QuestionListRecord = {
+  id: number;
+  prompt: string;
+  questionType: string;
+  snippet: string;
+  topicLabels: string[];
+  topicNodeIds: string[];
+  optionsRaw: any[];
+  answerOptions: string[];
+  answer: string;
+  imageUrl: string;
+};
 
-interface ProfessorView {
-  professorView: TokenObject[];
-}
+const normalizeOptions = (arr: any[]): string[] => {
+  if (!Array.isArray(arr)) return [];
+  return arr.map((option) => {
+    if (typeof option === "string") return option;
+    if (option && typeof option === "object") {
+      const candidates = [
+        "text",
+        "label",
+        "value",
+        "option",
+        "content",
+        "title",
+        "answer",
+        "answer_text",
+        "name",
+      ] as const;
+      for (const key of candidates) {
+        const value = option[key];
+        if (typeof value === "string" && value.trim()) return value;
+      }
+      const stringValues = Object.values(option).filter(
+        (value) => typeof value === "string",
+      );
+      if (stringValues.length === 1) return String(stringValues[0]);
+      return JSON.stringify(option);
+    }
+    return String(option ?? "");
+  });
+};
 
-interface StudentView {
-  studentView: {
-    tokens: string[];
-    problem: string[];
-  }[];
-}
+const normalizeOptionKey = (value: string) =>
+  value
+    .normalize("NFKC")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLocaleLowerCase();
 
-type RearrangeOptions = [ProfessorView, StudentView];
+const toQuestionListRecord = (
+  question: Awaited<ReturnType<typeof getLessonQuestions>>[number],
+): QuestionListRecord => ({
+  id: question.question_id,
+  prompt: question.prompt?.trim() || "Untitled question",
+  questionType: question.question_type,
+  snippet: question.snippet ?? "",
+  topicLabels: question.topics ?? [],
+  topicNodeIds: question.topic_node_ids ?? [],
+  optionsRaw: question.answer_options ?? [],
+  answerOptions: normalizeOptions(question.answer_options ?? []),
+  answer: question.answer ?? "",
+  imageUrl: question.image_url ?? "",
+});
+
+const formatQuestionType = (questionType: string) =>
+  questionType
+    .replace(/[-_]/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+
+const QuestionListSkeleton = () => (
+  <Stack spacing={1.5}>
+    {Array.from({ length: 5 }).map((_, index) => (
+      <Paper key={index} variant="outlined" sx={{ p: 2 }}>
+        <Box sx={{ display: "flex", gap: 2 }}>
+          <Skeleton variant="circular" width={28} height={28} />
+          <Box sx={{ flex: 1 }}>
+            <Skeleton width={`${70 - index * 5}%`} height={28} />
+            <Skeleton width="42%" height={22} sx={{ mt: 1 }} />
+          </Box>
+        </Box>
+      </Paper>
+    ))}
+  </Stack>
+);
 
 const QuestionDataGrid = ({
   params,
@@ -73,7 +160,16 @@ const QuestionDataGrid = ({
   setOpen: Dispatch<SetStateAction<boolean>>;
   refreshGrid: number;
 }) => {
-  const [rows, setRows] = useState<GridRowsProp>([]);
+  const router = useRouter();
+  const [questions, setQuestions] = useState<QuestionListRecord[]>([]);
+  const [expandedQuestionIds, setExpandedQuestionIds] = useState<Set<number>>(
+    new Set(),
+  );
+  const [searchTerm, setSearchTerm] = useState("");
+  const [questionTypeFilter, setQuestionTypeFilter] = useState("all");
+  const [topicFilter, setTopicFilter] = useState("all");
+  const [page, setPage] = useState(0);
+  const [questionsPerPage, setQuestionsPerPage] = useState(25);
   const [confirmationDialogOpen, setConfirmationDialogOpen] = useState(false);
   const {
     questionID,
@@ -84,19 +180,21 @@ const QuestionDataGrid = ({
     setQuestionOptions,
     setCorrectAnswer,
     setTopicsCovered,
+    resetStates,
   } = useQuestionContext();
 
-  const paramsNav = useParams();
   const [aiBusy, setAiBusy] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
-
-  // const [draftType, setDraftType] = useState<'multiple_choice' | 'short_answer'>('multiple_choice')
-  const [draftType, setDraftType] =
-    useState<"multiple_choice">("multiple_choice");
+  const [aiStep, setAiStep] = useState<"prompt" | "preview">("prompt");
+  const [aiInstruction, setAiInstruction] = useState("");
+  const [aiTopics, setAiTopics] = useState<GraphTopic[]>([]);
+  const [lessonTopicNodeIds, setLessonTopicNodeIds] = useState<string[]>([]);
+  const [aiTopicNodeIds, setAiTopicNodeIds] = useState<string[]>([]);
+  const [aiTopicsLoading, setAiTopicsLoading] = useState(false);
+  const [aiError, setAiError] = useState("");
   const [draftPrompt, setDraftPrompt] = useState("");
   const [draftSnippet, setDraftSnippet] = useState("");
-  const [draftTopicsText, setDraftTopicsText] = useState("");
-  const [draftOptionsText, setDraftOptionsText] = useState("");
+  const [draftOptions, setDraftOptions] = useState<string[]>([]);
   const [draftAnswer, setDraftAnswer] = useState("");
   const [draftImageUrl, setDraftImageUrl] = useState("");
 
@@ -105,39 +203,13 @@ const QuestionDataGrid = ({
   const [importing, setImporting] = useState(false);
   const { setImageUrl } = useQuestionContext();
 
-  const normalizeOptions = (arr: any[]): string[] => {
-    if (!Array.isArray(arr)) return [];
-    return arr.map((o) => {
-      if (typeof o === "string") return o;
-      if (o && typeof o === "object") {
-        const candidates = [
-          "text",
-          "label",
-          "value",
-          "option",
-          "content",
-          "title",
-          "answer",
-          "answer_text",
-          "name",
-        ] as const;
-        for (const k of candidates) {
-          const v = (o as any)[k];
-          if (typeof v === "string" && v.trim() !== "") return v;
-        }
-        const stringProps = Object.entries(o).filter(
-          ([, v]) => typeof v === "string",
-        );
-        if (stringProps.length === 1) return String(stringProps[0][1]);
-        try {
-          return JSON.stringify(o);
-        } catch {
-          return String(o);
-        }
-      }
-      return String(o ?? "");
-    });
-  };
+  const refreshQuestions = useCallback(async () => {
+    const lessonQuestions = await getLessonQuestions(
+      params.className,
+      params.lessonName,
+    );
+    setQuestions(lessonQuestions.map(toQuestionListRecord));
+  }, [params.className, params.lessonName]);
 
   const handleImport = async () => {
     const text = importText.trim();
@@ -208,37 +280,9 @@ const QuestionDataGrid = ({
 
       alert(message);
 
-      // Refresh the grid if any questions were imported
+      // Refresh the list if any questions were imported.
       if ((result.imported ?? 0) > 0) {
-        const lessonQuestions = await getLessonQuestions(
-          params.className,
-          params.lessonName,
-        );
-        const tableRows = lessonQuestions.map(
-          ({
-            question_id,
-            question_type,
-            prompt,
-            snippet,
-            topics,
-            answer_options,
-            answer,
-            image_url,
-          }) => ({
-            id: question_id,
-            promptColumn: prompt,
-            questionTypeColumn: question_type,
-            snippetColumn: snippet,
-            unitsCoveredColumn: topics?.join(", ") || "",
-            optionsColumn: Array.isArray(answer_options)
-              ? answer_options.join(", ")
-              : "",
-            optionsRaw: answer_options || [],
-            answerColumn: answer,
-            imageUrlColumn: image_url || "",
-          }),
-        );
-        setRows(tableRows);
+        await refreshQuestions();
       }
 
       setImportDialogOpen(false);
@@ -251,79 +295,112 @@ const QuestionDataGrid = ({
     }
   };
 
-  const handleGenerateAI = async () => {
-    if (rows.length < 3) {
-      alert(
-        "Please add at least three questions in this lesson before generating with AI.",
-      );
-      return;
-    }
+  const handleOpenAIGenerator = async () => {
+    setPreviewOpen(true);
+    setAiStep("prompt");
+    setAiError("");
+    setAiInstruction("");
+    setAiTopicNodeIds([]);
+    setDraftPrompt("");
+    setDraftSnippet("");
+    setDraftOptions(createDefaultAnswerOptions());
+    setDraftAnswer("");
+    setDraftImageUrl("");
 
-    setAiBusy(true);
+    if (aiTopics.length) return;
+
+    setAiTopicsLoading(true);
     try {
-      const classId = await getClassIdByName(params.className);
-      if (!classId) {
-        alert("Could not resolve class_id for this class");
-        return;
-      }
-
-      const lessonId = await getLessonIdByName(
+      const result = await getQuestionTopicOptions(
         params.className,
         params.lessonName,
       );
 
-      if (!lessonId) {
-        alert("Could not find lesson");
+      if (!result.success) {
+        setAiError("Unable to load topics from this class graph.");
         return;
       }
 
-      const payload = {
-        mode: "generate",
-        class_id: Number(classId),
-        lesson_id: lessonId,
-      };
+      setAiTopics(result.topics);
+      setLessonTopicNodeIds(result.lessonTopicNodeIds ?? []);
+      if (!result.topics.length) {
+        setAiError("Add topics to the class graph before generating a question.");
+      }
+    } catch (error) {
+      console.error("Unable to load graph topics:", error);
+      setAiError("Unable to load topics from this class graph.");
+    } finally {
+      setAiTopicsLoading(false);
+    }
+  };
 
-      const backend =
-        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3000";
-      const resp = await fetch(`${backend}/llm/transform-question`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+  const handleCloseAIGenerator = () => {
+    if (aiBusy) return;
+    setPreviewOpen(false);
+    setAiError("");
+  };
+
+  const handleGenerateAI = async () => {
+    if (!aiInstruction.trim()) {
+      setAiError("Describe the question you want to generate.");
+      return;
+    }
+    if (!aiTopicNodeIds.length) {
+      setAiError("Select at least one graph topic.");
+      return;
+    }
+
+    setAiBusy(true);
+    setAiError("");
+    try {
+      const result = await generateQuestionFromPrompt({
+        className: params.className,
+        lessonName: params.lessonName,
+        instruction: aiInstruction,
+        topicNodeIds: aiTopicNodeIds,
       });
 
-      if (!resp.ok) {
-        const preview = await resp.text().catch(() => "");
-        console.error("LLM endpoint failed", resp.status, preview);
-        alert(`LLM endpoint failed ${resp.status}`);
+      if (!result.success || !result.data) {
+        setAiError(result.error ?? "Question generation failed.");
         return;
       }
 
-      const q = await resp.json();
-      const toStr = (v: any) =>
-        v == null ? "" : typeof v === "string" ? v : String(v);
-      const normTopics: string[] = Array.isArray(q.topics)
-        ? q.topics.map((t: any) => String(t ?? "")).filter(Boolean)
-        : [];
-      const normOptions: string[] = normalizeOptions(q.answer_options);
-      const normAnswer = (() => {
-        const a = q.answer;
-        if (typeof a === "string") return a;
-        if (a && typeof a.text === "string") return a.text;
-        if (a && typeof a.label === "string") return a.label;
-        return toStr(a);
-      })();
+      setAiTopicNodeIds(result.data.topicNodeIds);
+      setDraftPrompt(result.data.prompt);
+      setDraftSnippet(result.data.snippet);
+      const generatedOptions = normalizeOptions(result.data.answerOptions).map(
+        (option) => option.trim(),
+      );
+      const optionKeys = generatedOptions.map(normalizeOptionKey);
+      if (
+        generatedOptions.length !== 4 ||
+        optionKeys.some((option) => !option) ||
+        new Set(optionKeys).size !== optionKeys.length
+      ) {
+        setAiError(
+          "The generated question contained duplicate or empty answers. Generate it again.",
+        );
+        return;
+      }
 
-      setDraftType("multiple_choice");
-      setDraftPrompt(toStr(q.prompt));
-      setDraftSnippet(toStr(q.snippet));
-      setDraftTopicsText(normTopics.join(", "));
-      setDraftOptionsText(normOptions.join(", "));
-      setDraftAnswer(normAnswer);
-      setDraftImageUrl(toStr(q.image_url));
-      setPreviewOpen(true);
-    } catch (e) {
-      console.error("Generate AI error:", e);
-      alert("Failed to generate a question.");
+      const matchingAnswer = generatedOptions.find(
+        (option) =>
+          normalizeOptionKey(option) ===
+          normalizeOptionKey(result.data.answer),
+      );
+      if (!matchingAnswer) {
+        setAiError(
+          "The generated correct answer did not match an answer option. Generate it again.",
+        );
+        return;
+      }
+
+      setDraftOptions(generatedOptions);
+      setDraftAnswer(matchingAnswer);
+      setAiStep("preview");
+    } catch (error) {
+      console.error("Question generation failed:", error);
+      setAiError("Question generation failed. Please try again.");
     } finally {
       setAiBusy(false);
     }
@@ -331,77 +408,46 @@ const QuestionDataGrid = ({
 
   const handleSaveGenerated = async () => {
     try {
-      const tRaw = (draftType || "")
-        .toString()
-        .toLowerCase()
-        .replace(/\s+/g, "_")
-        .replace(/-/g, "_");
+      const answerOptions = draftOptions.map((option) => option.trim());
+      const uniqueOptions = new Set(
+        answerOptions.map(normalizeOptionKey),
+      );
+      const selectedTopics = aiTopics.filter((topic) =>
+        aiTopicNodeIds.includes(topic.id),
+      );
 
-      const typeMap: Record<string, "multiple_choice"> = {
-        multiple_choice: "multiple_choice",
-        mcq: "multiple_choice",
-        mc: "multiple_choice",
-        multiplechoice: "multiple_choice",
-        choice: "multiple_choice",
-        // short_answer: "short_answer",
-        // shortanswer: "short_answer",
-        // short: "short_answer",
-        // rearrange: "rearrange",
-        // reorder: "rearrange",
-        // ordering: "rearrange",
-      };
-
-      const normalizedType =
-        typeMap[tRaw] ||
-        (tRaw.includes("multiple") || tRaw.includes("choice")
-          ? "multiple_choice"
-          : tRaw.includes("short")
-            ? "short_answer"
-            : tRaw.includes("rearrange")
-              ? "rearrange"
-              : null);
-
-      if (!normalizedType) {
-        alert("Unsupported question type.");
+      if (!draftPrompt.trim()) {
+        setAiError("The question prompt cannot be empty.");
+        return;
+      }
+      if (
+        answerOptions.length < 2 ||
+        answerOptions.some((option) => !option) ||
+        uniqueOptions.size !== answerOptions.length
+      ) {
+        setAiError("Provide at least two distinct, non-empty answer options.");
+        return;
+      }
+      if (!answerOptions.includes(draftAnswer)) {
+        setAiError("Select the correct answer from the answer options.");
+        return;
+      }
+      if (selectedTopics.length !== aiTopicNodeIds.length) {
+        setAiError("One or more selected topics are no longer available.");
         return;
       }
 
-      const topics = draftTopicsText
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
-      let answer_options: string[] = [];
-      if (normalizedType === "multiple_choice") {
-        answer_options = draftOptionsText
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean);
-        if (answer_options.length < 2) {
-          alert("Multiple Choice requires at least two options.");
-          return;
-        }
-      }
-
-      const serverQuestionType =
-        normalizedType === "multiple_choice"
-          ? "multiple-choice"
-          : normalizedType;
-
-      const answerOptions =
-        serverQuestionType === "multiple-choice"
-          ? draftOptionsText
-              .split(",")
-              .map((s) => s.trim())
-              .filter(Boolean)
-              .map((txt, i) => ({ [`option${i + 1}`]: txt }))
-          : [];
+      setAiError("");
 
       const payload = {
-        questionType: serverQuestionType,
+        questionType: "multiple-choice",
         prompt: draftPrompt.trim(),
         snippet: draftSnippet.trim() || "",
-        topics,
-        answerOptions,
+        topics: selectedTopics.map((topic) => topic.label),
+        topicNodeIds: aiTopicNodeIds,
+        answerOptions: answerOptions.map((option, index) => ({
+          [`option${index + 1}`]: option,
+        })),
         answer: draftAnswer.trim() || "",
         image_url: draftImageUrl.trim() || null,
         is_ai_generated: true,
@@ -413,49 +459,28 @@ const QuestionDataGrid = ({
       //   payload
       // );
 
+      setAiBusy(true);
       const res = await createNewQuestion(
         params.lessonName,
         params.className,
         payload,
       );
       if (!res?.success) {
-        alert("Failed to save question.");
+        setAiError(
+          typeof res?.error === "string"
+            ? res.error
+            : "Failed to save question.",
+        );
         return;
       }
 
-      const lessonQuestions = await getLessonQuestions(
-        params.className,
-        params.lessonName,
-      );
-      const tableRows = lessonQuestions.map(
-        ({
-          question_id,
-          question_type,
-          prompt,
-          snippet,
-          topics,
-          answer_options,
-          answer,
-          image_url,
-        }) => ({
-          id: question_id,
-          promptColumn: prompt,
-          questionTypeColumn: question_type,
-          snippetColumn: snippet,
-          unitsCoveredColumn: topics?.join(", ") || "",
-          optionsColumn: Array.isArray(answer_options)
-            ? answer_options.join(", ")
-            : "",
-          optionsRaw: answer_options || [],
-          answerColumn: answer,
-          // imageUrlColumn: image_url || '',
-        }),
-      );
-      setRows(tableRows);
+      await refreshQuestions();
       setPreviewOpen(false);
     } catch (e) {
       console.error("Error saving question:", e);
-      alert("Error saving question.");
+      setAiError("Error saving question.");
+    } finally {
+      setAiBusy(false);
     }
   };
 
@@ -470,27 +495,16 @@ const QuestionDataGrid = ({
   };
 
   const handleEditClick = (id: number) => () => {
-    const row = rows?.find((row) => row.id === id);
-    if (!row) return;
+    const question = questions.find((item) => item.id === id);
+    if (!question) return;
 
-    const {
-      id: rowId,
-      promptColumn,
-      questionTypeColumn,
-      snippetColumn,
-      unitsCoveredColumn,
-      optionsRaw,
-      answerColumn,
-      imageUrlColumn,
-    } = row;
+    setQuestionID(question.id);
+    setQuestionType(question.questionType);
+    setQuestionPrompt(question.prompt);
+    setQuestionSnippet(question.snippet);
 
-    setQuestionID(rowId);
-    setQuestionType(questionTypeColumn);
-    setQuestionPrompt(promptColumn);
-    setQuestionSnippet(snippetColumn);
-
-    const formattedOptions = Array.isArray(optionsRaw)
-      ? optionsRaw.map((opt, i) => {
+    const formattedOptions = Array.isArray(question.optionsRaw)
+      ? question.optionsRaw.map((opt, i) => {
           if (typeof opt === "object" && opt !== null) {
             return opt;
           }
@@ -501,16 +515,11 @@ const QuestionDataGrid = ({
     setQuestionOptions(formattedOptions);
 
     setTimeout(() => {
-      setCorrectAnswer(answerColumn);
+      setCorrectAnswer(question.answer);
     }, 0);
 
-    setTopicsCovered(
-      unitsCoveredColumn
-        ? unitsCoveredColumn.split(",").map((s: string) => s.trim())
-        : [],
-    );
-
-    setImageUrl(imageUrlColumn || "");
+    setTopicsCovered(question.topicNodeIds);
+    setImageUrl(question.imageUrl);
 
     setOpen(true);
   };
@@ -528,35 +537,7 @@ const QuestionDataGrid = ({
         setDataLoading(false);
         return;
       }
-      const lessonQuestions = await getLessonQuestions(
-        params.className,
-        params.lessonName,
-      );
-      const tableRows = lessonQuestions.map(
-        ({
-          question_id,
-          question_type,
-          prompt,
-          snippet,
-          topics,
-          answer_options,
-          answer,
-          image_url,
-        }) => ({
-          id: question_id,
-          promptColumn: prompt,
-          questionTypeColumn: question_type,
-          snippetColumn: snippet,
-          unitsCoveredColumn: topics?.join(", ") || "",
-          optionsColumn: Array.isArray(answer_options)
-            ? answer_options.join(", ")
-            : "",
-          optionsRaw: answer_options || [],
-          answerColumn: answer,
-          imageUrlColumn: image_url || "",
-        }),
-      );
-      setRows(tableRows);
+      await refreshQuestions();
       handleConfimationDialogClose();
     } finally {
       setDataLoading(false);
@@ -564,316 +545,658 @@ const QuestionDataGrid = ({
   };
 
   useEffect(() => {
-    const fetchLessonQuestions = async () => {
-      const lessonQuestions = await getLessonQuestions(
-        params.className,
-        params.lessonName,
-      );
-      const tableRows = lessonQuestions.map(
-        ({
-          question_id,
-          question_type,
-          prompt,
-          snippet,
-          topics,
-          answer_options,
-          answer,
-          image_url,
-        }) => ({
-          id: question_id,
-          promptColumn: prompt,
-          questionTypeColumn: question_type,
-          snippetColumn: snippet,
-          unitsCoveredColumn: topics?.join(", ") || "",
-          optionsColumn: Array.isArray(answer_options)
-            ? answer_options.join(", ")
-            : "",
-          optionsRaw: answer_options || [],
-          answerColumn: answer,
-          imageUrlColumn: image_url || "",
-        }),
-      );
-      setRows(tableRows);
-      setDataLoading(false);
-    };
-    fetchLessonQuestions();
-  }, [
-    params.className,
-    params.lessonName,
-    setDataLoading,
-    setOpen,
-    refreshGrid,
-  ]);
+    let active = true;
 
-  const columns: GridColDef[] = [
-    {
-      field: "promptColumn",
-      headerName: "Question",
-      width: 250,
-      align: "center",
-      headerAlign: "center",
-    },
-    {
-      field: "questionTypeColumn",
-      headerName: "Question Type",
-      width: 180,
-      align: "center",
-      headerAlign: "center",
-    },
-    {
-      field: "snippetColumn",
-      headerName: "Snippet",
-      width: 180,
-      align: "center",
-      headerAlign: "center",
-    },
-    {
-      field: "unitsCoveredColumn",
-      headerName: "Topics Covered",
-      width: 180,
-      align: "center",
-      headerAlign: "center",
-    },
-    {
-      field: "optionsColumn",
-      headerName: "Options",
-      width: 250,
-      align: "center",
-      headerAlign: "center",
-    },
-    {
-      field: "answerColumn",
-      headerName: "Answer",
-      width: 220,
-      align: "center",
-      headerAlign: "center",
-    },
-    {
-      field: "imageUrlColumn",
-      headerName: "Image",
-      width: 120,
-      align: "center",
-      headerAlign: "center",
-      renderCell: (params) => {
-        const url = String(params.value || "").trim();
-        if (!url) return null;
-        return (
-          <img
-            src={url}
-            alt="question"
-            style={{
-              maxHeight: 64,
-              maxWidth: 112,
-              objectFit: "contain",
-              borderRadius: 4,
-            }}
-            onError={(e) => {
-              const el = e.currentTarget as HTMLImageElement;
-              el.style.display = "none";
-            }}
-          />
+    const fetchLessonQuestions = async () => {
+      try {
+        await refreshQuestions();
+      } finally {
+        if (active) setDataLoading(false);
+      }
+    };
+
+    fetchLessonQuestions();
+    return () => {
+      active = false;
+    };
+  }, [refreshGrid, refreshQuestions, setDataLoading]);
+
+  const questionTypes = useMemo(
+    () =>
+      Array.from(new Set(questions.map((question) => question.questionType)))
+        .filter(Boolean)
+        .sort(),
+    [questions],
+  );
+
+  const topicOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(questions.flatMap((question) => question.topicLabels)),
+      )
+        .filter(Boolean)
+        .sort((first, second) => first.localeCompare(second)),
+    [questions],
+  );
+
+  const filteredQuestions = useMemo(() => {
+    const query = searchTerm.trim().toLocaleLowerCase();
+
+    return questions.filter((question) => {
+      const searchableValues = [
+        question.prompt,
+        question.answer,
+        question.questionType,
+        ...question.topicLabels,
+        ...question.answerOptions,
+      ];
+      const matchesSearch =
+        !query ||
+        searchableValues.some((value) =>
+          value.toLocaleLowerCase().includes(query),
         );
-      },
-    },
-    {
-      field: "actions",
-      type: "actions",
-      headerName: "Actions",
-      align: "center",
-      headerAlign: "center",
-      width: 100,
-      cellClassName: "actions",
-      getActions: ({ id }) => [
-        <GridActionsCellItem
-          key={id}
-          icon={<EditIcon />}
-          label="Edit"
-          onClick={handleEditClick(id as number)}
-          color="inherit"
-          sx={{ ":hover": { color: "#1B94F7" } }}
-        />,
-        <GridActionsCellItem
-          key={id}
-          icon={<DeleteIcon />}
-          label="Delete"
-          onClick={() => handleConfimationDialogOpen(id as number)}
-          color="inherit"
-          sx={{ ":hover": { color: "red" } }}
-        />,
-      ],
-    },
-  ];
+      const matchesType =
+        questionTypeFilter === "all" ||
+        question.questionType === questionTypeFilter;
+      const matchesTopic =
+        topicFilter === "all" || question.topicLabels.includes(topicFilter);
+
+      return matchesSearch && matchesType && matchesTopic;
+    });
+  }, [questions, questionTypeFilter, searchTerm, topicFilter]);
+
+  const visibleQuestions = useMemo(
+    () =>
+      filteredQuestions.slice(
+        page * questionsPerPage,
+        page * questionsPerPage + questionsPerPage,
+      ),
+    [filteredQuestions, page, questionsPerPage],
+  );
+
+  useEffect(() => {
+    setPage(0);
+  }, [searchTerm, questionTypeFilter, topicFilter, questionsPerPage]);
+
+  useEffect(() => {
+    const lastPage = Math.max(
+      0,
+      Math.ceil(filteredQuestions.length / questionsPerPage) - 1,
+    );
+    if (page > lastPage) setPage(lastPage);
+  }, [filteredQuestions.length, page, questionsPerPage]);
+
+  const toggleQuestionDetails = (id: number) => {
+    setExpandedQuestionIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   return (
     <Box
       sx={{
-        height: "calc(100vh - 64px)",
+        height: "100%",
         width: "100%",
-        "& .actions": { color: "text.secondary" },
-        "& .textPrimary": { color: "text.primary" },
+        minWidth: 0,
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
       }}
     >
       {dataLoading ? (
-        <DataGridSkeleton columns={columns} />
+        <Box sx={{ px: 3, py: 2 }}>
+          <QuestionListSkeleton />
+        </Box>
       ) : (
         <>
-          {/* Generate button */}
           <Box
             sx={{
               display: "flex",
-              justifyContent: "flex-end",
-              mb: 1,
-              pr: 2,
+              alignItems: "flex-end",
+              justifyContent: "space-between",
+              px: 3,
+              py: 2,
               gap: 2,
+              flexShrink: 0,
+              width: "100%",
+              minWidth: 0,
+              boxSizing: "border-box",
             }}
           >
-            <Button
-              variant="outlined"
-              color="primary"
-              onClick={() => setImportDialogOpen(true)}
+            <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1 }}>
+              <Tooltip title="Back to lessons">
+                <IconButton
+                  aria-label="Back to lessons"
+                  onClick={() =>
+                    router.push(`/classes/${params.className}/lessons`)
+                  }
+                  sx={{ mt: 0.25 }}
+                >
+                  <ArrowBackIcon />
+                </IconButton>
+              </Tooltip>
+              <Box>
+                <Typography variant="h4" component="h1" fontWeight={700}>
+                  {decodeURIComponent(params.lessonName).replace(/-/g, " ")}
+                </Typography>
+                <Typography
+                  variant="h6"
+                  color="text.secondary"
+                  sx={{ mt: 0.5 }}
+                >
+                  Questions
+                </Typography>
+              </Box>
+            </Box>
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "flex-end",
+                gap: 1,
+                minWidth: 0,
+              }}
             >
-              Import Questions
-            </Button>
-            <Button
-              variant="contained"
-              color="primary"
-              onClick={handleGenerateAI}
-              disabled={aiBusy}
-            >
-              {aiBusy ? "Generating…" : "Generate Question with AI"}
-            </Button>
+              <Button
+                variant="outlined"
+                startIcon={<UploadFileIcon />}
+                onClick={() => setImportDialogOpen(true)}
+              >
+                Import questions
+              </Button>
+              <Button
+                variant="outlined"
+                startIcon={<AutoAwesomeIcon />}
+                onClick={handleOpenAIGenerator}
+              >
+                Generate with AI
+              </Button>
+              <Button
+                variant="contained"
+                startIcon={<AddCircleOutlineIcon />}
+                onClick={() => {
+                  resetStates();
+                  setOpen(true);
+                }}
+              >
+                Add question
+              </Button>
+            </Box>
           </Box>
 
-          <DataGrid
-            rows={rows}
-            columns={columns}
-            disableColumnSelector
-            slots={{ toolbar: GridToolbar }}
-            slotProps={{ toolbar: { showQuickFilter: true } }}
-          />
+          <Box
+            sx={{
+              flex: 1,
+              minHeight: 0,
+              minWidth: 0,
+              width: "100%",
+              px: 3,
+              pb: 3,
+              overflowY: "auto",
+            }}
+          >
+            <Paper
+              variant="outlined"
+              sx={{
+                display: "grid",
+                gridTemplateColumns: "minmax(260px, 1fr) 210px 240px",
+                gap: 1.5,
+                p: 1.5,
+                mb: 1.5,
+              }}
+            >
+              <TextField
+                size="small"
+                placeholder="Search questions, answers, or topics"
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                slotProps={{
+                  input: {
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchIcon fontSize="small" />
+                      </InputAdornment>
+                    ),
+                  },
+                }}
+              />
+              <FormControl size="small">
+                <InputLabel id="question-type-filter-label">Type</InputLabel>
+                <Select
+                  labelId="question-type-filter-label"
+                  value={questionTypeFilter}
+                  label="Type"
+                  onChange={(event) =>
+                    setQuestionTypeFilter(event.target.value)
+                  }
+                >
+                  <MenuItem value="all">All types</MenuItem>
+                  {questionTypes.map((questionType) => (
+                    <MenuItem key={questionType} value={questionType}>
+                      {formatQuestionType(questionType)}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <FormControl size="small">
+                <InputLabel id="question-topic-filter-label">Topic</InputLabel>
+                <Select
+                  labelId="question-topic-filter-label"
+                  value={topicFilter}
+                  label="Topic"
+                  onChange={(event) => setTopicFilter(event.target.value)}
+                >
+                  <MenuItem value="all">All topics</MenuItem>
+                  {topicOptions.map((topic) => (
+                    <MenuItem key={topic} value={topic}>
+                      {topic}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Paper>
 
-          {/* AI Preview Dialog */}
+            {visibleQuestions.length ? (
+              <Stack spacing={1}>
+                {visibleQuestions.map((question, index) => {
+                  const expanded = expandedQuestionIds.has(question.id);
+                  const visibleTopics = question.topicLabels.slice(0, 4);
+                  const hiddenTopicCount =
+                    question.topicLabels.length - visibleTopics.length;
+
+                  return (
+                    <Paper key={question.id} variant="outlined">
+                      <Box
+                        sx={{
+                          display: "grid",
+                          gridTemplateColumns: "32px minmax(0, 1fr) auto",
+                          gap: 1.5,
+                          alignItems: "start",
+                          p: 2,
+                        }}
+                      >
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ pt: 0.25, fontVariantNumeric: "tabular-nums" }}
+                        >
+                          {page * questionsPerPage + index + 1}
+                        </Typography>
+
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography
+                            variant="subtitle1"
+                            component="h2"
+                            fontWeight={700}
+                            sx={{ overflowWrap: "anywhere" }}
+                          >
+                            {question.prompt}
+                          </Typography>
+                          <Box
+                            sx={{
+                              display: "flex",
+                              flexWrap: "wrap",
+                              gap: 0.75,
+                              mt: 1,
+                            }}
+                          >
+                            <Chip
+                              size="small"
+                              variant="outlined"
+                              label={formatQuestionType(question.questionType)}
+                            />
+                            {visibleTopics.map((topic) => (
+                              <Chip key={topic} size="small" label={topic} />
+                            ))}
+                            {hiddenTopicCount > 0 && (
+                              <Tooltip
+                                title={question.topicLabels
+                                  .slice(visibleTopics.length)
+                                  .join(", ")}
+                              >
+                                <Chip
+                                  size="small"
+                                  variant="outlined"
+                                  label={`+${hiddenTopicCount} topics`}
+                                />
+                              </Tooltip>
+                            )}
+                          </Box>
+                          {question.answer && (
+                            <Typography variant="body2" sx={{ mt: 1 }}>
+                              <Box
+                                component="span"
+                                sx={{ color: "text.secondary" }}
+                              >
+                                Correct answer:{" "}
+                              </Box>
+                              <Box
+                                component="span"
+                                sx={{ color: "success.main", fontWeight: 700 }}
+                              >
+                                {question.answer}
+                              </Box>
+                            </Typography>
+                          )}
+                        </Box>
+
+                        <Box sx={{ display: "flex", alignItems: "center" }}>
+                          <Tooltip title="Edit question">
+                            <IconButton
+                              aria-label={`Edit question: ${question.prompt}`}
+                              onClick={handleEditClick(question.id)}
+                            >
+                              <EditIcon />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Delete question">
+                            <IconButton
+                              color="error"
+                              aria-label={`Delete question: ${question.prompt}`}
+                              onClick={() =>
+                                handleConfimationDialogOpen(question.id)
+                              }
+                            >
+                              <DeleteIcon />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip
+                            title={expanded ? "Hide details" : "Show details"}
+                          >
+                            <IconButton
+                              aria-label={`${expanded ? "Hide" : "Show"} details for: ${question.prompt}`}
+                              aria-expanded={expanded}
+                              onClick={() =>
+                                toggleQuestionDetails(question.id)
+                              }
+                              sx={{
+                                transform: expanded
+                                  ? "rotate(180deg)"
+                                  : "rotate(0deg)",
+                                transition: (theme) =>
+                                  theme.transitions.create("transform"),
+                              }}
+                            >
+                              <ExpandMoreIcon />
+                            </IconButton>
+                          </Tooltip>
+                        </Box>
+                      </Box>
+
+                      <Collapse in={expanded} unmountOnExit>
+                        <Divider />
+                        <Box
+                          sx={{
+                            display: "grid",
+                            gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                            gap: 3,
+                            px: 2,
+                            py: 2.5,
+                          }}
+                        >
+                          <Box>
+                            <Typography variant="subtitle2">
+                              Answer options
+                            </Typography>
+                            {question.answerOptions.length ? (
+                              <Box
+                                component="ol"
+                                sx={{
+                                  m: 0,
+                                  mt: 1,
+                                  pl: 2.5,
+                                  display: "grid",
+                                  gap: 0.75,
+                                }}
+                              >
+                                {question.answerOptions.map((option, optionIndex) => (
+                                  <Typography
+                                    component="li"
+                                    variant="body2"
+                                    key={`${question.id}-${optionIndex}`}
+                                    sx={{
+                                      color:
+                                        option === question.answer
+                                          ? "success.main"
+                                          : "text.primary",
+                                      fontWeight:
+                                        option === question.answer ? 700 : 400,
+                                    }}
+                                  >
+                                    {option}
+                                  </Typography>
+                                ))}
+                              </Box>
+                            ) : (
+                              <Typography
+                                variant="body2"
+                                color="text.secondary"
+                                sx={{ mt: 1 }}
+                              >
+                                No answer options
+                              </Typography>
+                            )}
+                          </Box>
+
+                          <Stack spacing={2}>
+                            {question.snippet && (
+                              <Box>
+                                <Typography variant="subtitle2">
+                                  Snippet
+                                </Typography>
+                                <Box
+                                  component="pre"
+                                  sx={{
+                                    m: 0,
+                                    mt: 1,
+                                    p: 1.5,
+                                    overflowX: "auto",
+                                    bgcolor: "action.hover",
+                                    borderRadius: 1,
+                                    fontSize: 13,
+                                    whiteSpace: "pre-wrap",
+                                    overflowWrap: "anywhere",
+                                  }}
+                                >
+                                  {question.snippet}
+                                </Box>
+                              </Box>
+                            )}
+                            {question.imageUrl && (
+                              <Box>
+                                <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                                  Image
+                                </Typography>
+                                <Box
+                                  component="img"
+                                  src={question.imageUrl}
+                                  alt="Question reference"
+                                  sx={{
+                                    display: "block",
+                                    maxWidth: "100%",
+                                    maxHeight: 240,
+                                    objectFit: "contain",
+                                    borderRadius: 1,
+                                  }}
+                                />
+                              </Box>
+                            )}
+                            {!question.snippet && !question.imageUrl && (
+                              <Box>
+                                <Typography variant="subtitle2">
+                                  Additional content
+                                </Typography>
+                                <Typography
+                                  variant="body2"
+                                  color="text.secondary"
+                                  sx={{ mt: 1 }}
+                                >
+                                  No snippet or image attached
+                                </Typography>
+                              </Box>
+                            )}
+                          </Stack>
+                        </Box>
+                      </Collapse>
+                    </Paper>
+                  );
+                })}
+              </Stack>
+            ) : (
+              <Box
+                sx={{
+                  minHeight: 260,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  textAlign: "center",
+                  borderTop: 1,
+                  borderBottom: 1,
+                  borderColor: "divider",
+                }}
+              >
+                <Typography variant="h6">
+                  {questions.length
+                    ? "No questions match these filters"
+                    : "No questions yet"}
+                </Typography>
+                <Typography color="text.secondary" sx={{ mt: 0.5 }}>
+                  {questions.length
+                    ? "Try another search, type, or topic."
+                    : "Add, import, or generate the first question for this lesson."}
+                </Typography>
+              </Box>
+            )}
+
+            <TablePagination
+              component="div"
+              count={filteredQuestions.length}
+              page={page}
+              onPageChange={(_, nextPage) => setPage(nextPage)}
+              rowsPerPage={questionsPerPage}
+              onRowsPerPageChange={(event) =>
+                setQuestionsPerPage(Number(event.target.value))
+              }
+              rowsPerPageOptions={[10, 25, 50]}
+              labelRowsPerPage="Questions per page"
+            />
+          </Box>
+
+          {/* AI question generator */}
           <Dialog
             open={previewOpen}
-            onClose={() => setPreviewOpen(false)}
+            onClose={handleCloseAIGenerator}
             fullWidth
-            maxWidth="md"
+            maxWidth="lg"
           >
-            <DialogTitle>AI Generated Question (Preview)</DialogTitle>
+            <DialogTitle>
+              {aiStep === "prompt"
+                ? "Generate a question with AI"
+                : "Review generated question"}
+            </DialogTitle>
             <DialogContent dividers>
               <Stack spacing={2} sx={{ mt: 1 }}>
-                <FormControl fullWidth>
-                  <InputLabel id="draft-type-label">Question Type</InputLabel>
-                  <Select
-                    labelId="draft-type-label"
-                    label="Question Type"
-                    value={draftType}
-                    onChange={(e) => setDraftType(e.target.value as any)}
-                  >
-                    <MenuItem value="multiple_choice">Multiple Choice</MenuItem>
-                    {/* <MenuItem value="short_answer">Short Answer</MenuItem> */}
-                    {/* <MenuItem value="rearrange">Rearrange</MenuItem> */}
-                  </Select>
-                </FormControl>
+                {aiError && <Alert severity="error">{aiError}</Alert>}
 
-                <TextField
-                  label="Prompt"
-                  value={draftPrompt}
-                  onChange={(e) => setDraftPrompt(e.target.value)}
-                  fullWidth
-                  multiline
-                  minRows={3}
-                />
-                <TextField
-                  label="Snippet (optional)"
-                  value={draftSnippet}
-                  onChange={(e) => setDraftSnippet(e.target.value)}
-                  fullWidth
-                  multiline
-                  minRows={2}
-                />
-                <TextField
-                  label="Topics (comma-separated)"
-                  value={draftTopicsText}
-                  onChange={(e) => setDraftTopicsText(e.target.value)}
-                  fullWidth
-                />
-                {draftType === "multiple_choice" && (
-                  <Box>
-                    {(() => {
-                      const options = draftOptionsText
-                        .split(",")
-                        .map((s) => s.trim())
-                        .filter(Boolean);
-                      if (options.length === 0) options.push("", "", "", "");
-                      return options.map((opt, idx) => (
-                        <TextField
-                          key={idx}
-                          label={`Answer Option ${idx + 1}`}
-                          value={opt}
-                          onChange={(e) => {
-                            const newOpts = [...options];
-                            newOpts[idx] = e.target.value;
-                            setDraftOptionsText(newOpts.join(", "));
-                          }}
-                          fullWidth
-                          sx={{ mb: 1.5 }}
-                        />
-                      ));
-                    })()}
-                    <Button
-                      size="small"
-                      onClick={() =>
-                        setDraftOptionsText(draftOptionsText + ", ")
-                      }
-                      sx={{ mt: 0.5 }}
-                    >
-                      + Add Option
-                    </Button>
-                  </Box>
-                )}
-
-                <TextField
-                  label="Correct Answer"
-                  value={draftAnswer}
-                  onChange={(e) => setDraftAnswer(e.target.value)}
-                  fullWidth
-                />
-
-                {/* Image URL field + inline preview */}
-                <TextField
-                  label="Image URL (optional)"
-                  value={draftImageUrl}
-                  onChange={(e) => setDraftImageUrl(e.target.value)}
-                  fullWidth
-                />
-                {draftImageUrl?.trim() ? (
-                  <Box
-                    sx={{ mt: 1, display: "flex", justifyContent: "center" }}
-                  >
-                    <img
-                      src={draftImageUrl}
-                      alt="preview"
-                      style={{
-                        maxHeight: 160,
-                        maxWidth: "100%",
-                        objectFit: "contain",
-                        borderRadius: 4,
-                      }}
-                      onError={(e) => {
-                        const el = e.currentTarget as HTMLImageElement;
-                        el.style.display = "none";
-                      }}
+                {aiStep === "prompt" ? (
+                  <>
+                    <TextField
+                      label="What should this question assess?"
+                      value={aiInstruction}
+                      onChange={(event) => setAiInstruction(event.target.value)}
+                      placeholder="For example: Create a debugging question where students identify why a nested loop runs one extra time."
+                      fullWidth
+                      multiline
+                      minRows={5}
+                      inputProps={{ maxLength: 2000 }}
+                      helperText={`${aiInstruction.length}/2000`}
+                      disabled={aiBusy}
                     />
-                  </Box>
-                ) : null}
+
+                    <TopicPicker
+                      topics={aiTopics}
+                      value={aiTopicNodeIds}
+                      onChange={setAiTopicNodeIds}
+                      label="Topics covered"
+                      loading={aiTopicsLoading}
+                      disabled={aiBusy}
+                      columns={3}
+                      preferredTopicNodeIds={lessonTopicNodeIds}
+                    />
+                  </>
+                ) : (
+                  <QuestionEditor
+                    prompt={draftPrompt}
+                    onPromptChange={setDraftPrompt}
+                    snippet={draftSnippet}
+                    onSnippetChange={setDraftSnippet}
+                    options={draftOptions}
+                    onOptionsChange={setDraftOptions}
+                    correctAnswer={draftAnswer}
+                    onCorrectAnswerChange={setDraftAnswer}
+                    topics={aiTopics}
+                    selectedTopicNodeIds={aiTopicNodeIds}
+                    onSelectedTopicNodeIdsChange={setAiTopicNodeIds}
+                    imageUrl={draftImageUrl}
+                    onImageUrlChange={setDraftImageUrl}
+                    disabled={aiBusy}
+                    preferredTopicNodeIds={lessonTopicNodeIds}
+                  />
+                )}
               </Stack>
             </DialogContent>
             <DialogActions>
-              <Button onClick={() => setPreviewOpen(false)}>Cancel</Button>
-              <Button variant="contained" onClick={handleSaveGenerated}>
-                Save to Lesson
+              <Button onClick={handleCloseAIGenerator} disabled={aiBusy}>
+                Cancel
               </Button>
+              {aiStep === "prompt" ? (
+                <Button
+                  variant="contained"
+                  onClick={handleGenerateAI}
+                  disabled={
+                    aiBusy ||
+                    aiTopicsLoading ||
+                    !aiInstruction.trim() ||
+                    !aiTopicNodeIds.length
+                  }
+                  startIcon={
+                    aiBusy ? <CircularProgress size={18} /> : <AutoAwesomeIcon />
+                  }
+                >
+                  {aiBusy ? "Generating..." : "Generate question"}
+                </Button>
+              ) : (
+                <>
+                  <Button onClick={() => setAiStep("prompt")} disabled={aiBusy}>
+                    Back
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    onClick={handleGenerateAI}
+                    disabled={aiBusy}
+                    startIcon={
+                      aiBusy ? (
+                        <CircularProgress size={18} />
+                      ) : (
+                        <AutoAwesomeIcon />
+                      )
+                    }
+                  >
+                    {aiBusy ? "Generating..." : "Regenerate"}
+                  </Button>
+                  <Button
+                    variant="contained"
+                    onClick={handleSaveGenerated}
+                    disabled={aiBusy}
+                  >
+                    Save to lesson
+                  </Button>
+                </>
+              )}
             </DialogActions>
           </Dialog>
 

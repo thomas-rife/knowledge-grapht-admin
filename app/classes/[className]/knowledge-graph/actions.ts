@@ -3,6 +3,10 @@
 import { Json } from "@/supabase";
 import { createClient } from "@/utils/supabase/server";
 import { type Node, type Edge } from "@xyflow/react";
+import {
+  extractGraphTopics,
+  resolveGraphTopicValues,
+} from "@/utils/graph-topics";
 
 const GEMINI_MODEL = process.env.GEMINI_MODEL ?? "gemini-3-flash-preview";
 const GEMINI_API_BASE =
@@ -708,6 +712,174 @@ export const getKnowledgeGraphData = async (className: string) => {
   }
 
   return { success: true, graphData };
+};
+
+export const getTopicNodeReferences = async (
+  className: string,
+  nodeIds: string[],
+) => {
+  const supabase = createClient();
+  const normalizedNodeIds = Array.from(
+    new Set(nodeIds.map((nodeId) => String(nodeId).trim()).filter(Boolean)),
+  );
+
+  if (!normalizedNodeIds.length) {
+    return {
+      success: true,
+      referencedNodeIds: [],
+      lessonCount: 0,
+      questionCount: 0,
+      unresolvedReferenceCount: 0,
+    };
+  }
+
+  const { data: userData } = await supabase.auth.getUser();
+  if (!userData.user) {
+    return { success: false, error: "No user found" };
+  }
+
+  const { classRecord, error: classError } = await getClassRecord(
+    supabase,
+    className,
+  );
+  if (classError || !classRecord) {
+    return { success: false, error: "Class not found" };
+  }
+
+  const [{ data: graphRow }, lessonResult, questionResult] = await Promise.all([
+    supabase
+      .from("class_knowledge_graph")
+      .select("react_flow_data")
+      .eq("class_id", classRecord.class_id)
+      .maybeSingle(),
+    supabase
+      .from("class_lesson_bank")
+      .select("lesson_id, topic_node_ids")
+      .eq("class_id", classRecord.class_id),
+    supabase
+      .from("class_question_bank")
+      .select("question_id, topic_node_ids")
+      .eq("class_id", classRecord.class_id),
+  ]);
+
+  if (lessonResult.error || questionResult.error) {
+    return {
+      success: false,
+      error:
+        lessonResult.error?.message ??
+        questionResult.error?.message ??
+        "Unable to verify topic references",
+    };
+  }
+
+  const graphTopics = extractGraphTopics(graphRow?.react_flow_data ?? []);
+  const lessonLinks = lessonResult.data ?? [];
+  const questionLinks = questionResult.data ?? [];
+  const legacyLessonIds = lessonLinks
+    .filter((link) => !(link.topic_node_ids ?? []).length)
+    .map((link) => link.lesson_id);
+  const legacyQuestionIds = questionLinks
+    .filter((link) => !(link.topic_node_ids ?? []).length)
+    .map((link) => link.question_id);
+
+  const [{ data: legacyLessons }, { data: legacyQuestions }] =
+    await Promise.all([
+      legacyLessonIds.length
+        ? supabase
+            .from("lessons")
+            .select("lesson_id, topics")
+            .in("lesson_id", legacyLessonIds)
+        : Promise.resolve({ data: [] }),
+      legacyQuestionIds.length
+        ? supabase
+            .from("questions")
+            .select("question_id, topics")
+            .in("question_id", legacyQuestionIds)
+        : Promise.resolve({ data: [] }),
+    ]);
+
+  const legacyLessonTopics = new Map(
+    (legacyLessons ?? []).map((lesson) => [lesson.lesson_id, lesson.topics]),
+  );
+  const legacyQuestionTopics = new Map(
+    (legacyQuestions ?? []).map((question) => [
+      question.question_id,
+      question.topics,
+    ]),
+  );
+  const referencedNodeIds = new Set<string>();
+  let lessonCount = 0;
+  let questionCount = 0;
+  let unresolvedReferenceCount = 0;
+  const backfillUpdates: PromiseLike<unknown>[] = [];
+
+  lessonLinks.forEach((link) => {
+    const storedNodeIds = link.topic_node_ids ?? [];
+    const resolved = resolveGraphTopicValues(
+      graphTopics,
+      storedNodeIds.length
+        ? storedNodeIds
+        : legacyLessonTopics.get(link.lesson_id),
+    );
+    const matchedIds = resolved.nodeIds.filter((nodeId) =>
+      normalizedNodeIds.includes(nodeId),
+    );
+    if (matchedIds.length) {
+      lessonCount += 1;
+      matchedIds.forEach((nodeId) => referencedNodeIds.add(nodeId));
+    }
+    if (!storedNodeIds.length && resolved.nodeIds.length) {
+      backfillUpdates.push(
+        supabase
+          .from("class_lesson_bank")
+          .update({ topic_node_ids: resolved.nodeIds })
+          .eq("class_id", classRecord.class_id)
+          .eq("lesson_id", link.lesson_id),
+      );
+    }
+    if (!storedNodeIds.length && resolved.unresolved.length) {
+      unresolvedReferenceCount += 1;
+    }
+  });
+
+  questionLinks.forEach((link) => {
+    const storedNodeIds = link.topic_node_ids ?? [];
+    const resolved = resolveGraphTopicValues(
+      graphTopics,
+      storedNodeIds.length
+        ? storedNodeIds
+        : legacyQuestionTopics.get(link.question_id),
+    );
+    const matchedIds = resolved.nodeIds.filter((nodeId) =>
+      normalizedNodeIds.includes(nodeId),
+    );
+    if (matchedIds.length) {
+      questionCount += 1;
+      matchedIds.forEach((nodeId) => referencedNodeIds.add(nodeId));
+    }
+    if (!storedNodeIds.length && resolved.nodeIds.length) {
+      backfillUpdates.push(
+        supabase
+          .from("class_question_bank")
+          .update({ topic_node_ids: resolved.nodeIds })
+          .eq("class_id", classRecord.class_id)
+          .eq("question_id", link.question_id),
+      );
+    }
+    if (!storedNodeIds.length && resolved.unresolved.length) {
+      unresolvedReferenceCount += 1;
+    }
+  });
+
+  await Promise.all(backfillUpdates);
+
+  return {
+    success: true,
+    referencedNodeIds: Array.from(referencedNodeIds),
+    lessonCount,
+    questionCount,
+    unresolvedReferenceCount,
+  };
 };
 
 export const updateKnowledgeGraph = async (
