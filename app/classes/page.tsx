@@ -57,16 +57,13 @@ type GraphGranularity = "simple" | "standard" | "detailed";
 
 const CLASS_NAME_PATTERN = /^[a-zA-Z0-9\s\-_&().]+$/;
 const OTHER_DEPARTMENT = "Other";
+const CUSTOM_COURSE_VALUE = "custom";
 const CUSTOM_COURSE_NAME_MAX_LENGTH = 160;
 
 const formatCatalogCourseLabel = (course: CatalogCourseOption) => {
   const code = course.code.trim();
   const title = course.title.trim();
-  if (
-    (course.department ?? "").localeCompare(OTHER_DEPARTMENT, undefined, {
-      sensitivity: "base",
-    }) === 0
-  ) {
+  if (code.startsWith("OTHER-")) {
     return title;
   }
   return code.localeCompare(title, undefined, { sensitivity: "base" }) === 0
@@ -187,6 +184,8 @@ const Classes = () => {
     number | ""
   >("");
   const [customCatalogCourseName, setCustomCatalogCourseName] = useState("");
+  const [usingCustomCatalogCourse, setUsingCustomCatalogCourse] =
+    useState(false);
   const [showCustomCourseValidation, setShowCustomCourseValidation] =
     useState(false);
   const [savingCustomCatalogCourse, setSavingCustomCatalogCourse] =
@@ -266,6 +265,7 @@ const Classes = () => {
     setSelectedDepartment("");
     setSelectedCatalogCourseId("");
     setCustomCatalogCourseName("");
+    setUsingCustomCatalogCourse(false);
     setShowCustomCourseValidation(false);
     setStartingPoint("syllabus");
     setCourseMaterial("");
@@ -310,7 +310,12 @@ const Classes = () => {
       return false;
     }
 
-    if (selectedDepartment === OTHER_DEPARTMENT) {
+    if (!selectedDepartment) {
+      showNotification("Select a department first", "error");
+      return false;
+    }
+
+    if (usingCustomCatalogCourse) {
       setShowCustomCourseValidation(true);
       const customCourseName = customCatalogCourseName
         .trim()
@@ -352,14 +357,12 @@ const Classes = () => {
     if (onboardingStep === 0) {
       if (!validateClassInfo()) return;
 
-      if (
-        selectedDepartment === OTHER_DEPARTMENT &&
-        !selectedCatalogCourseId
-      ) {
+      if (usingCustomCatalogCourse && !selectedCatalogCourseId) {
         setSavingCustomCatalogCourse(true);
         try {
           const result = await getOrCreateCustomCatalogCourse(
             customCatalogCourseName,
+            selectedDepartment,
             classLevel,
           );
           if (!result.success) {
@@ -552,9 +555,7 @@ const Classes = () => {
           sensitivity: "base",
         }) !== 0,
     )
-    .sort((a, b) =>
-      a.localeCompare(b, undefined, { sensitivity: "base" }),
-    )
+    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
     .concat(OTHER_DEPARTMENT);
   const filteredCatalogCourses = selectedDepartment
     ? catalogCourses.filter(
@@ -565,7 +566,8 @@ const Classes = () => {
     : [];
   const customCatalogCourseOptions = catalogCourses.filter(
     (course) =>
-      (course.department ?? "").localeCompare(OTHER_DEPARTMENT, undefined, {
+      course.code.startsWith("OTHER-") &&
+      (course.department ?? "").localeCompare(selectedDepartment, undefined, {
         sensitivity: "base",
       }) === 0,
   );
@@ -756,6 +758,7 @@ const Classes = () => {
                     setSelectedDepartment(event.target.value);
                     setSelectedCatalogCourseId("");
                     setCustomCatalogCourseName("");
+                    setUsingCustomCatalogCourse(false);
                     setShowCustomCourseValidation(false);
                     setSelectedSourceClassId("");
                     setSourceLessons([]);
@@ -770,7 +773,55 @@ const Classes = () => {
                 </Select>
               </FormControl>
 
-              {selectedDepartment === OTHER_DEPARTMENT ? (
+              <FormControl
+                fullWidth
+                disabled={
+                  catalogLoading ||
+                  creatingClass ||
+                  savingCustomCatalogCourse ||
+                  !selectedDepartment
+                }
+              >
+                <InputLabel id="catalog-course-label">
+                  Catalog Course
+                </InputLabel>
+                <Select
+                  labelId="catalog-course-label"
+                  label="Catalog Course"
+                  value={
+                    usingCustomCatalogCourse
+                      ? CUSTOM_COURSE_VALUE
+                      : selectedCatalogCourseId
+                  }
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    const isCustomCourse = value === CUSTOM_COURSE_VALUE;
+                    setUsingCustomCatalogCourse(isCustomCourse);
+                    setSelectedCatalogCourseId(
+                      isCustomCourse ? "" : Number(value),
+                    );
+                    setCustomCatalogCourseName("");
+                    setShowCustomCourseValidation(false);
+                    setSelectedSourceClassId("");
+                    setSourceLessons([]);
+                    setSelectedLessonIds([]);
+                  }}
+                >
+                  {filteredCatalogCourses.map((course) => (
+                    <MenuItem
+                      key={course.catalogCourseId}
+                      value={course.catalogCourseId}
+                    >
+                      {formatCatalogCourseLabel(course)}
+                    </MenuItem>
+                  ))}
+                  <MenuItem value={CUSTOM_COURSE_VALUE}>
+                    Course not listed
+                  </MenuItem>
+                </Select>
+              </FormControl>
+
+              {usingCustomCatalogCourse && (
                 <Autocomplete
                   freeSolo
                   options={customCatalogCourseOptions.map(
@@ -813,7 +864,7 @@ const Classes = () => {
                       {...params}
                       id="custom-catalog-course-name"
                       label="Catalog Course Name"
-                      placeholder="For example: Special Studies in Machine Learning"
+                      placeholder="For example: CMSI 5998 - Generative AI and Algorithms"
                       fullWidth
                       required
                       inputProps={{
@@ -828,45 +879,11 @@ const Classes = () => {
                         showCustomCourseValidation &&
                         !customCatalogCourseName.trim()
                           ? "Catalog course name is required"
-                          : "Enter an official course name or select one previously added under Other."
+                          : "Enter the official course name or select one previously added for this department."
                       }
                     />
                   )}
                 />
-              ) : (
-                <FormControl
-                  fullWidth
-                  disabled={
-                    catalogLoading ||
-                    creatingClass ||
-                    !selectedDepartment ||
-                    filteredCatalogCourses.length === 0
-                  }
-                >
-                  <InputLabel id="catalog-course-label">
-                    Catalog Course
-                  </InputLabel>
-                  <Select
-                    labelId="catalog-course-label"
-                    label="Catalog Course"
-                    value={selectedCatalogCourseId}
-                    onChange={(event) => {
-                      setSelectedCatalogCourseId(Number(event.target.value));
-                      setSelectedSourceClassId("");
-                      setSourceLessons([]);
-                      setSelectedLessonIds([]);
-                    }}
-                  >
-                    {filteredCatalogCourses.map((course) => (
-                      <MenuItem
-                        key={course.catalogCourseId}
-                        value={course.catalogCourseId}
-                      >
-                        {formatCatalogCourseLabel(course)}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
               )}
 
               <TextField

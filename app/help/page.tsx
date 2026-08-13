@@ -351,8 +351,9 @@ export default function HelpPage() {
                 <GuideStep number={1} title="Open course setup">
                   From My Classes, select Create New Class. Choose the
                   department first, then the catalog course, class name, and
-                  level. Choose "Other" in the course catalog if your course is
-                  not listed.
+                  level. If the department is missing, choose "Other." If only
+                  the course is missing, select "Course not listed" and enter
+                  its official name.
                 </GuideStep>
                 <GuideStep
                   number={2}

@@ -178,6 +178,7 @@ export const getCatalogCourses = async (): Promise<CatalogCourseOption[]> => {
 
 export const getOrCreateCustomCatalogCourse = async (
   courseName: string,
+  department: string,
   level: number,
 ): Promise<
   | { success: true; course: CatalogCourseOption }
@@ -193,6 +194,8 @@ export const getOrCreateCustomCatalogCourse = async (
   }
 
   const normalizedName = normalizeCatalogCourseName(courseName);
+  const normalizedDepartment =
+    normalizeCatalogCourseName(department) || CUSTOM_CATALOG_DEPARTMENT;
   if (!normalizedName) {
     return { success: false, error: "Enter the catalog course name." };
   }
@@ -213,7 +216,7 @@ export const getOrCreateCustomCatalogCourse = async (
     const { data, error } = await (supabase as any)
       .from("catalog_courses")
       .select("catalog_course_id, code, title, department, level")
-      .eq("department", CUSTOM_CATALOG_DEPARTMENT)
+      .eq("department", normalizedDepartment)
       .limit(1000);
 
     if (error) return { course: null, error };
@@ -247,9 +250,11 @@ export const getOrCreateCustomCatalogCourse = async (
   const { data: insertedCourse, error: insertError } = await (supabase as any)
     .from("catalog_courses")
     .insert({
-      code: createCustomCatalogCode(normalizedName.toLocaleLowerCase()),
+      code: createCustomCatalogCode(
+        `${normalizedDepartment}:${normalizedName}`.toLocaleLowerCase(),
+      ),
       title: normalizedName,
-      department: CUSTOM_CATALOG_DEPARTMENT,
+      department: normalizedDepartment,
       level,
     })
     .select("catalog_course_id, code, title, department, level")
