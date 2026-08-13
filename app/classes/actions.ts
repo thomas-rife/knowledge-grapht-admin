@@ -22,6 +22,28 @@ export type CatalogCourseOption = {
   level: number | null;
 };
 
+const CUSTOM_CATALOG_DEPARTMENT = "Other";
+const CUSTOM_CATALOG_NAME_MAX_LENGTH = 160;
+
+const normalizeCatalogCourseName = (value: string) =>
+  value.trim().replace(/\s+/g, " ");
+
+const createCustomCatalogCode = (courseName: string) => {
+  let hash = 0;
+  for (let index = 0; index < courseName.length; index += 1) {
+    hash = (hash * 31 + courseName.charCodeAt(index)) | 0;
+  }
+  return `OTHER-${(hash >>> 0).toString(36).toUpperCase()}`;
+};
+
+const toCatalogCourseOption = (course: any): CatalogCourseOption => ({
+  catalogCourseId: Number(course.catalog_course_id),
+  code: String(course.code ?? ""),
+  title: String(course.title ?? ""),
+  department: course.department ?? null,
+  level: typeof course.level === "number" ? course.level : null,
+});
+
 export type GraphSourceOption = {
   classId: number;
   className: string;
@@ -151,13 +173,108 @@ export const getCatalogCourses = async (): Promise<CatalogCourseOption[]> => {
     return [];
   }
 
-  return (data ?? []).map((course: any) => ({
-    catalogCourseId: Number(course.catalog_course_id),
-    code: String(course.code ?? ""),
-    title: String(course.title ?? ""),
-    department: course.department ?? null,
-    level: typeof course.level === "number" ? course.level : null,
-  }));
+  return (data ?? []).map(toCatalogCourseOption);
+};
+
+export const getOrCreateCustomCatalogCourse = async (
+  courseName: string,
+  level: number,
+): Promise<
+  | { success: true; course: CatalogCourseOption }
+  | { success: false; error: string }
+> => {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { success: false, error: "You must be signed in to add a course." };
+  }
+
+  const normalizedName = normalizeCatalogCourseName(courseName);
+  if (!normalizedName) {
+    return { success: false, error: "Enter the catalog course name." };
+  }
+  if (normalizedName.length > CUSTOM_CATALOG_NAME_MAX_LENGTH) {
+    return {
+      success: false,
+      error: `Keep the catalog course name under ${CUSTOM_CATALOG_NAME_MAX_LENGTH} characters.`,
+    };
+  }
+  if (/[\u0000-\u001f\u007f]/.test(normalizedName)) {
+    return {
+      success: false,
+      error: "The catalog course name contains unsupported characters.",
+    };
+  }
+
+  const findExistingCourse = async () => {
+    const { data, error } = await (supabase as any)
+      .from("catalog_courses")
+      .select("catalog_course_id, code, title, department, level")
+      .eq("department", CUSTOM_CATALOG_DEPARTMENT)
+      .limit(1000);
+
+    if (error) return { course: null, error };
+
+    const comparisonName = normalizedName.toLocaleLowerCase();
+    const match = (data ?? []).find((course: any) => {
+      const code = normalizeCatalogCourseName(String(course.code ?? ""));
+      const title = normalizeCatalogCourseName(String(course.title ?? ""));
+      return (
+        code.toLocaleLowerCase() === comparisonName ||
+        title.toLocaleLowerCase() === comparisonName ||
+        `${code} - ${title}`.toLocaleLowerCase() === comparisonName
+      );
+    });
+
+    return {
+      course: match ? toCatalogCourseOption(match) : null,
+      error: null,
+    };
+  };
+
+  const existing = await findExistingCourse();
+  if (existing.error) {
+    console.error("Error checking custom catalog courses:", existing.error);
+    return { success: false, error: "Unable to check the course catalog." };
+  }
+  if (existing.course) {
+    return { success: true, course: existing.course };
+  }
+
+  const { data: insertedCourse, error: insertError } = await (supabase as any)
+    .from("catalog_courses")
+    .insert({
+      code: createCustomCatalogCode(normalizedName.toLocaleLowerCase()),
+      title: normalizedName,
+      department: CUSTOM_CATALOG_DEPARTMENT,
+      level,
+    })
+    .select("catalog_course_id, code, title, department, level")
+    .single();
+
+  if (insertError) {
+    // A concurrent request may have inserted the same course first.
+    if (insertError.code === "23505") {
+      const concurrentCourse = await findExistingCourse();
+      if (concurrentCourse.course) {
+        return { success: true, course: concurrentCourse.course };
+      }
+    }
+
+    console.error("Error creating custom catalog course:", insertError);
+    return {
+      success: false,
+      error:
+        insertError.code === "42501"
+          ? "You do not have permission to add courses to the catalog. An administrator must enable catalog-course inserts."
+          : "Unable to add this course to the catalog.",
+    };
+  }
+
+  return { success: true, course: toCatalogCourseOption(insertedCourse) };
 };
 
 export const getGraphSourcesForCatalogCourse = async (

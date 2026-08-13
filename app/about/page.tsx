@@ -22,13 +22,13 @@ const principles = [
     icon: <MenuBookOutlined />,
     title: "Connect instruction",
     description:
-      "Lessons and assessment questions are linked to graph topics so course content stays organized.",
+      "Lessons and quiz questions are tagged with graph topics so students can see which topics they need to work on.",
   },
   {
     icon: <InsightsOutlined />,
     title: "Study learning activity",
     description:
-      "Recorded student activity can be reviewed at the course, topic, and individual-student level.",
+      "Recorded student activity can be reviewed at the aggregate, topic, and individual-student level.",
   },
 ];
 
@@ -65,18 +65,23 @@ export default function AboutPage() {
               <Typography
                 variant="h5"
                 color="text.secondary"
-                sx={{ mt: 1.5, maxWidth: 760, fontWeight: 400, lineHeight: 1.45 }}
+                sx={{
+                  mt: 1.5,
+                  maxWidth: 760,
+                  fontWeight: 400,
+                  lineHeight: 1.45,
+                }}
               >
-                An instructor workspace for structuring course concepts,
-                creating targeted review lessons, and studying learning
-                activity through a knowledge graph.
+                An instructor interface for structuring course concepts,
+                creating course lessons, and analyzing student learning activity
+                through a knowledge graph.
               </Typography>
               <Button
                 variant="contained"
                 onClick={() => router.push("/help")}
                 sx={{ mt: 3 }}
               >
-                Open instructor guide
+                Open Instructor Guide
               </Button>
             </Box>
             <Box sx={{ display: "flex", justifyContent: "center" }}>
@@ -114,18 +119,18 @@ export default function AboutPage() {
             <Box>
               <Typography variant="h6" sx={{ lineHeight: 1.55 }}>
                 Knowledge Grapht supports research into how structured course
-                knowledge and targeted review can help instructors understand
-                student learning.
+                knowledge and targeted review can help students retain the
+                information they learn.
               </Typography>
               <Typography
                 color="text.secondary"
                 sx={{ mt: 2, lineHeight: 1.7 }}
               >
-                Instructors create a graph for each course, associate lessons
-                and questions with specific topics, publish review material,
-                and examine the activity produced as students work through it.
-                The current system is an active research platform, so features
-                and analysis methods may continue to change as they are tested.
+                Instructors create a graph for their courses, tag lessons and
+                questions with specific topics from that graph, publish
+                lessons/quizzes, and examine student activity. The current
+                system is an active research platform, so features and analysis
+                methods may continue to change as they are tested.
               </Typography>
             </Box>
           </Box>
@@ -139,7 +144,7 @@ export default function AboutPage() {
               component="h2"
               fontWeight={700}
             >
-              How the system is organized
+              Organization
             </Typography>
             <Box
               sx={{
@@ -196,13 +201,14 @@ export default function AboutPage() {
               component="h2"
               fontWeight={700}
             >
-              Current scope
+              Current Scope
             </Typography>
             <Typography color="text.secondary" sx={{ lineHeight: 1.7 }}>
               The instructor web application currently focuses on course
-              creation, knowledge-graph editing, lesson and question authoring,
-              student enrollment, and activity review. The Help page documents
-              the workflows available in this version of the platform.
+              creation, knowledge-graph editing, lesson and quiz question
+              authoring, student enrollment, and activity review. The
+              "Instructor Guide" page documents the workflows available in this
+              version of the platform.
             </Typography>
           </Box>
         </Container>

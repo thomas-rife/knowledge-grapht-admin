@@ -2,6 +2,7 @@
 
 import {
   Alert,
+  AlertTitle,
   Box,
   Chip,
   Container,
@@ -12,6 +13,12 @@ import {
   Paper,
   Radio,
   Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
   Typography,
 } from "@mui/material";
 import {
@@ -264,7 +271,7 @@ export default function HelpPage() {
         >
           <Container maxWidth="lg" sx={{ py: 5 }}>
             <Typography variant="h3" component="h1" fontWeight={750}>
-              Instructor guide
+              Instructor Guide
             </Typography>
             <Typography
               variant="h6"
@@ -327,9 +334,9 @@ export default function HelpPage() {
             >
               <WorkflowOverview />
               <Alert severity="info" sx={{ mt: 2 }}>
-                Create or review the knowledge graph before building lessons.
-                Lessons and questions use its topics for organization and
-                analytics.
+                Make sure to create or review the knowledge graph before
+                building lessons. Lessons and questions use the graph's topics
+                for organization, tagging and analytics.
               </Alert>
             </GuideSection>
             <Divider />
@@ -338,28 +345,121 @@ export default function HelpPage() {
               id="course"
               icon={<SchoolOutlined />}
               title="Create a course"
-              summary="Start from your institution's catalog course, then choose how much existing material to reuse."
+              summary="Start from your institution's catalog course, then choose how much existing material to reuse, if any."
             >
               <Stack spacing={2.5}>
                 <GuideStep number={1} title="Open course setup">
                   From My Classes, select Create New Class. Choose the
                   department first, then the catalog course, class name, and
-                  level.
+                  level. Choose "Other" in the course catalog if your course is
+                  not listed.
                 </GuideStep>
-                <GuideStep number={2} title="Choose a starting point">
-                  Use AI-Generated Graph to paste a syllabus or outline, Use an
-                  existing course to copy a graph associated with the same
-                  catalog course, or Start from scratch for an empty graph.
+                <GuideStep
+                  number={2}
+                  title="Choose a starting point for your graph"
+                >
+                  Start by choosing a way to set your course up. The
+                  "AI-Generated Graph" option works by pasting in a list of the
+                  topics covered in your course. A good example of this might be
+                  the lecture schedule or a general list of topics.
+                  Alternatively, you can select "Use an existing course" to copy
+                  a graph and lessons associated with it, or "Start from
+                  scratch" for a clean slate.
                 </GuideStep>
+                <Alert severity="info" sx={{ mt: 2 }}>
+                  <AlertTitle>Example AI-generated graph input</AlertTitle>
+                  <Typography variant="body2" sx={{ mb: 1.5 }}>
+                    A course outline might look like this (be as comprehensive
+                    or as brief as you want):
+                  </Typography>
+                  <TableContainer sx={{ overflowX: "auto" }}>
+                    <Table
+                      size="small"
+                      aria-label="Example course outline for graph generation"
+                      sx={{ minWidth: 900 }}
+                    >
+                      <TableHead>
+                        <TableRow>
+                          <TableCell sx={{ fontWeight: 700 }}>Lab</TableCell>
+                          <TableCell sx={{ fontWeight: 700 }}>Theme</TableCell>
+                          <TableCell sx={{ fontWeight: 700 }}>Topics</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {[
+                          {
+                            number: 1,
+                            name: "Triangle Art",
+                            theme: "Simple Programming",
+                            topics:
+                              "Python, Printing, Strings, Variables, For loops, Ranges, Functions, Running Python on the cloud",
+                          },
+                          {
+                            number: 2,
+                            name: "Command Center",
+                            theme: "Command Line",
+                            topics:
+                              "Terminal, Text Editors, Running Python locally, The Python REPL",
+                          },
+                          {
+                            number: 3,
+                            name: "Sharing is Caring",
+                            theme: "Social Coding",
+                            topics: "Git, GitHub, README files",
+                          },
+                          {
+                            number: 4,
+                            name: "Petting Zoo",
+                            theme: "Cute Animals",
+                            topics:
+                              "If statements, While loops, Break statements, String functions such as strip and lower, Input, The VS Code extensions Python and autopep8",
+                          },
+                          {
+                            number: 5,
+                            name: "Professional Yapping",
+                            theme: "Wordplay",
+                            topics:
+                              "Lists, Dictionaries, Multiline strings, random.choice, Functions that return values",
+                          },
+                        ].map((lab) => (
+                          <TableRow key={lab.number}>
+                            <TableCell sx={{ verticalAlign: "top" }}>
+                              <Box sx={{ display: "flex", gap: 1 }}>
+                                <Box component="span">{lab.number}</Box>
+                                <Box component="span">{lab.name}</Box>
+                              </Box>
+                            </TableCell>
+                            <TableCell sx={{ verticalAlign: "top" }}>
+                              {lab.theme}
+                            </TableCell>
+                            <TableCell sx={{ verticalAlign: "top" }}>
+                              {lab.topics}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                  <Typography variant="body2" sx={{ mb: 1.5 }}>
+                    Formatting doesn't matter, just paste in the content and let
+                    Gemini try to create the graph!
+                  </Typography>
+                </Alert>
                 <GuideStep number={3} title="Choose reusable lessons">
-                  When copying an existing course, select only the lessons you
-                  want. Their questions are copied with them and remain
-                  independent of the source course.
+                  If copying an existing course, select only the lessons you
+                  want. Their questions are copied with each selected lesson.
                 </GuideStep>
                 <GuideStep number={4} title="Review and create">
                   Confirm the summary, create the course, and review the graph
                   before publishing content.
                 </GuideStep>
+                <Alert severity="info" sx={{ mt: 2 }}>
+                  Whether copying a course or generating a graph, everything can
+                  be changed later. You're not locked into using anything from a
+                  copied or generated graph if you don't want to. Once it's
+                  created, just go to the Knowledge Graph page and make it
+                  yours!
+                </Alert>
               </Stack>
             </GuideSection>
             <Divider />
@@ -386,13 +486,19 @@ export default function HelpPage() {
                     them, and drag from a node handle to create a connection.
                   </GuideStep>
                   <GuideStep number={3} title="Delete carefully">
-                    Select a node or edge and press Backspace. A topic cannot be
-                    deleted while a lesson or question still references it.
+                    Select a node or edge and press Backspace to delete. A node
+                    cannot be deleted while a lesson or question still
+                    references it.
                   </GuideStep>
                   <GuideStep number={4} title="Save the graph">
                     Select Save your graph before leaving. Cancel restores the
                     last saved version.
                   </GuideStep>
+                  <Alert severity="info" sx={{ mt: 2 }}>
+                    A node can have as many incoming or outgoing edges as you
+                    want. If a topic precedes another, don't be scared to
+                    connect them. Just be careful you don't make a cycle!
+                  </Alert>
                 </Stack>
                 <GraphExample />
               </Box>
@@ -407,28 +513,34 @@ export default function HelpPage() {
             >
               <Stack spacing={2.5}>
                 <GuideStep number={1} title="Create or import a lesson">
-                  Open Lessons and select Create lesson. Import lessons can copy
-                  lessons you already own into the current course.
+                  Open Lessons and select Create lesson to start.
                 </GuideStep>
                 <GuideStep number={2} title="Select lesson topics">
                   Search or browse the topic list and select every graph topic
                   covered by the lesson.
                 </GuideStep>
                 <GuideStep number={3} title="Choose its status">
-                  Enable Publish now when the lesson is ready for students.
-                  Leave it disabled to save a draft.
+                  Enable "Publish now" when the lesson is ready for students.
+                  Leave it disabled to save a draft visible only to you.
                 </GuideStep>
                 <GuideStep number={4} title="Open the lesson">
                   Select the lesson card to review, add, edit, or remove its
                   questions. Use the three-dot menu to edit lesson details.
                 </GuideStep>
               </Stack>
-              <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 3 }}>
+              <Box
+                sx={{ display: "flex", alignItems: "center", gap: 1, mt: 3 }}
+              >
                 <Chip label="Draft" color="error" size="small" />
                 <Typography variant="body2" color="text.secondary">
                   Not yet available to students
                 </Typography>
-                <Chip label="Published" color="success" size="small" sx={{ ml: 2 }} />
+                <Chip
+                  label="Published"
+                  color="success"
+                  size="small"
+                  sx={{ ml: 2 }}
+                />
                 <Typography variant="body2" color="text.secondary">
                   Available for student review
                 </Typography>
@@ -451,23 +563,38 @@ export default function HelpPage() {
               >
                 <Stack spacing={2.5}>
                   <GuideStep number={1} title="Choose a creation method">
-                    Add question opens the manual editor. Generate with AI uses
-                    your prompt and selected graph topics. Import questions
-                    accepts the CSV format shown in the import dialog.
+                    "Add question" opens the manual editor, this is where I
+                    would start. "Generate with AI" uses your prompt and
+                    selected graph topics to create a question and answer
+                    options that you can edit or save directly.
                   </GuideStep>
+                  <Alert severity="info" sx={{ mt: 2 }}>
+                    Import questions accepts the CSV format shown in the import
+                    dialog (good for importing lots of questions at once)
+                  </Alert>
                   <GuideStep number={2} title="Complete the required fields">
                     Enter the question prompt, select at least one topic, and
                     provide distinct answer options.
                   </GuideStep>
+                  <Alert severity="info" sx={{ mt: 2 }}>
+                    You can have as few as two answer options, making formats
+                    like true/false questions easy.
+                  </Alert>
                   <GuideStep number={3} title="Mark the correct answer">
-                    Select the radio button beside exactly one answer option.
-                    Duplicate options are blocked.
+                    Select the radio button beside the correct answer.
                   </GuideStep>
                   <GuideStep number={4} title="Review saved questions">
                     Search or filter the question list. Expand a question to
                     inspect its options, snippet, or image, and use the action
                     buttons to edit or delete it.
                   </GuideStep>
+                  <Alert severity="info" sx={{ mt: 2 }}>
+                    Questions have optional fields such as code snippets for
+                    better formatted programming questions, and images. If you
+                    would like your question to include an image, insert an
+                    image link and it will be rendered to students when they
+                    view that question.
+                  </Alert>
                 </Stack>
                 <QuestionExample />
               </Box>
@@ -478,14 +605,17 @@ export default function HelpPage() {
               id="students"
               icon={<GroupOutlined />}
               title="Invite and review students"
-              summary="Generate a temporary join code in Settings, then use Roster to confirm enrollment."
+              summary="Generate a join code in Settings, then use the Roster tab to confirm enrollment."
             >
               <Stack spacing={2.5}>
                 <GuideStep number={1} title="Generate a join code">
                   Open Settings and find Class Invitation. Select Generate Join
-                  Code, then share the displayed code with students before it
-                  expires.
+                  Code, then share the displayed code with students.
                 </GuideStep>
+                <Alert severity="info" sx={{ mt: 2 }}>
+                  Join codes are valid for 16 weeks, so students can enroll at
+                  any point throughout the semester.
+                </Alert>
                 <GuideStep number={2} title="Check the roster">
                   Open Roster to search enrolled students, sort the list, and
                   switch between the available roster views.
@@ -511,7 +641,6 @@ export default function HelpPage() {
                 </GuideStep>
                 <GuideStep number={2} title="Interpret topic results">
                   Read topic-level results in the context of the course graph.
-                  Sparse or early activity should be treated as preliminary.
                 </GuideStep>
                 <GuideStep number={3} title="Use the roster for detail">
                   Open an individual student from Roster when you need a closer
@@ -553,8 +682,8 @@ export default function HelpPage() {
                     Students cannot see a lesson
                   </Typography>
                   <Typography color="text.secondary" sx={{ mt: 0.5 }}>
-                    Open the lesson menu and confirm it is Published rather
-                    than Draft.
+                    Open the lesson menu and confirm it is Published rather than
+                    Draft.
                   </Typography>
                 </Box>
                 <Box>

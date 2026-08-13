@@ -70,7 +70,7 @@ const Navbar = () => {
           onClick={() => router.push("/help")}
           sx={{ letterSpacing: 0, textTransform: "none" }}
         >
-          Help
+          Instructor Guide
         </Button>
 
         <Button
