@@ -36,6 +36,7 @@ import {
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutline";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
@@ -494,11 +495,11 @@ const QuestionDataGrid = ({
     setConfirmationDialogOpen(false);
   };
 
-  const handleEditClick = (id: number) => () => {
+  const handleOpenQuestionEditor = (id: number, duplicate = false) => () => {
     const question = questions.find((item) => item.id === id);
     if (!question) return;
 
-    setQuestionID(question.id);
+    setQuestionID(duplicate ? null : question.id);
     setQuestionType(question.questionType);
     setQuestionPrompt(question.prompt);
     setQuestionSnippet(question.snippet);
@@ -506,7 +507,7 @@ const QuestionDataGrid = ({
     const formattedOptions = Array.isArray(question.optionsRaw)
       ? question.optionsRaw.map((opt, i) => {
           if (typeof opt === "object" && opt !== null) {
-            return opt;
+            return { ...opt };
           }
           return { [`option${i + 1}`]: String(opt) };
         })
@@ -514,11 +515,9 @@ const QuestionDataGrid = ({
 
     setQuestionOptions(formattedOptions);
 
-    setTimeout(() => {
-      setCorrectAnswer(question.answer);
-    }, 0);
+    setCorrectAnswer(question.answer);
 
-    setTopicsCovered(question.topicNodeIds);
+    setTopicsCovered([...question.topicNodeIds]);
     setImageUrl(question.imageUrl);
 
     setOpen(true);
@@ -884,10 +883,18 @@ const QuestionDataGrid = ({
                         </Box>
 
                         <Box sx={{ display: "flex", alignItems: "center" }}>
+                          <Tooltip title="Duplicate question">
+                            <IconButton
+                              aria-label={`Duplicate question: ${question.prompt}`}
+                              onClick={handleOpenQuestionEditor(question.id, true)}
+                            >
+                              <ContentCopyIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
                           <Tooltip title="Edit question">
                             <IconButton
                               aria-label={`Edit question: ${question.prompt}`}
-                              onClick={handleEditClick(question.id)}
+                              onClick={handleOpenQuestionEditor(question.id)}
                             >
                               <EditIcon />
                             </IconButton>
