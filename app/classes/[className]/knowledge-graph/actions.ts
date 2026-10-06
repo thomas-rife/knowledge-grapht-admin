@@ -8,12 +8,9 @@ import {
   resolveGraphTopicValues,
 } from "@/utils/graph-topics";
 
-const GEMINI_MODEL = process.env.GEMINI_MODEL ?? "gemini-3-flash-preview";
-const GEMINI_API_BASE =
-  "https://generativelanguage.googleapis.com/v1beta/models";
+import { generateGeminiStructured } from "@/utils/gemini";
 
 type GraphGranularity = "simple" | "standard" | "detailed";
-type ThinkingLevel = "low" | "medium" | "high";
 
 interface GeneratedTopic {
   id: string;
@@ -149,63 +146,6 @@ const normalizeGeneratedTopics = (topics: GeneratedTopic[]) => {
       description: topic.description.trim(),
     };
   });
-};
-
-const extractGeminiText = (response: any): string => {
-  const text = response?.candidates?.[0]?.content?.parts?.[0]?.text;
-
-  if (typeof text !== "string" || !text.trim()) {
-    throw new Error("Gemini returned an empty response");
-  }
-
-  return text;
-};
-
-const callGeminiStructured = async <T>(
-  prompt: string,
-  schema: Record<string, unknown>,
-  thinkingLevel: ThinkingLevel = "low",
-): Promise<T> => {
-  const apiKey = process.env.GEMINI_API_KEY;
-
-  if (!apiKey) {
-    throw new Error("Missing GEMINI_API_KEY");
-  }
-
-  const response = await fetch(
-    `${GEMINI_API_BASE}/${GEMINI_MODEL}:generateContent`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": apiKey,
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [{ text: prompt }],
-          },
-        ],
-        generationConfig: {
-          responseMimeType: "application/json",
-          responseSchema: schema,
-          thinkingConfig: {
-            thinkingLevel,
-          },
-        },
-      }),
-      cache: "no-store",
-    },
-  );
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Gemini request failed (${response.status}): ${errorText}`);
-  }
-
-  const json = await response.json();
-  const text = extractGeminiText(json);
-  return JSON.parse(text) as T;
 };
 
 const getClassRecord = async (
@@ -533,7 +473,7 @@ export const generateKnowledgeGraphFromCourseMaterial = async ({
     typeof classRecord.level === "number" ? classRecord.level : 0;
 
   try {
-    const topicResponse = await callGeminiStructured<GeneratedTopicResponse>(
+    const topicResponse = await generateGeminiStructured<GeneratedTopicResponse>(
       buildTopicPrompt({
         courseMaterial,
         courseLevel,
@@ -547,7 +487,7 @@ export const generateKnowledgeGraphFromCourseMaterial = async ({
       topicResponse.candidate_topics,
     );
 
-    const edgeResponse = await callGeminiStructured<GeneratedEdgeResponse>(
+    const edgeResponse = await generateGeminiStructured<GeneratedEdgeResponse>(
       buildEdgePrompt({
         courseMaterial,
         topics: normalizedTopics,

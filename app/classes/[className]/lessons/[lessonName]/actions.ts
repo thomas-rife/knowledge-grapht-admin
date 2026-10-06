@@ -9,9 +9,7 @@ import {
   resolveGraphTopicValues,
 } from "@/utils/graph-topics";
 
-const GEMINI_MODEL = process.env.GEMINI_MODEL ?? "gemini-3-flash-preview";
-const GEMINI_API_BASE =
-  "https://generativelanguage.googleapis.com/v1beta/models";
+import { generateGeminiStructured, getGeminiErrorMessage } from "@/utils/gemini";
 
 const normalizeAnswerOptionKey = (value: string) =>
   value
@@ -1363,16 +1361,6 @@ const GENERATED_QUESTION_SCHEMA = {
   required: ["prompt", "snippet", "answer_options", "answer"],
 } as const;
 
-const extractGeminiText = (response: any): string => {
-  const text = response?.candidates?.[0]?.content?.parts?.[0]?.text;
-
-  if (typeof text !== "string" || !text.trim()) {
-    throw new Error("Gemini returned an empty response");
-  }
-
-  return text;
-};
-
 export async function generateQuestionFromPrompt(params: {
   className: string;
   lessonName: string;
@@ -1519,40 +1507,12 @@ Requirements:
           : `${generationPrompt}
 
 Your previous response was invalid. Ensure all four answer options are non-empty and genuinely distinct; do not repeat an option with different capitalization or spacing.`;
-      const response = await fetch(
-        `${GEMINI_API_BASE}/${GEMINI_MODEL}:generateContent`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-goog-api-key": apiKey,
-          },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: promptForAttempt }] }],
-            generationConfig: {
-              responseMimeType: "application/json",
-              responseSchema: GENERATED_QUESTION_SCHEMA,
-              thinkingConfig: { thinkingLevel: "low" },
-            },
-          }),
-          cache: "no-store",
-        },
-      );
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(
-          `Gemini request failed (${response.status}): ${errorText}`,
-        );
-      }
-
-      const responseJson = await response.json();
-      const generated = JSON.parse(extractGeminiText(responseJson)) as {
+      const generated = await generateGeminiStructured<{
         prompt?: unknown;
         snippet?: unknown;
         answer_options?: unknown;
         answer?: unknown;
-      };
+      }>(promptForAttempt, GENERATED_QUESTION_SCHEMA);
       const prompt = String(generated.prompt ?? "").trim();
       const snippet = String(generated.snippet ?? "").trim();
       const answerOptions = Array.isArray(generated.answer_options)
@@ -1599,7 +1559,10 @@ Your previous response was invalid. Ensure all four answer options are non-empty
     console.error("generateQuestionFromPrompt failed:", error);
     return {
       success: false,
-      error: "Question generation failed. Please try again.",
+      error: getGeminiErrorMessage(
+        error,
+        "Question generation failed. Please try again.",
+      ),
     };
   }
 }
