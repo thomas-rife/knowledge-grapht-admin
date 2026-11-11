@@ -33,6 +33,7 @@ import {
   PeopleOutline,
   AccountTree,
 } from "@mui/icons-material";
+import StudentExportButton from "@/components/student-export-button";
 import RosterSkeleton from "@/components/skeletons/roster-skeleton";
 import { enrolledStudents } from "./actions";
 import { useRouter } from "next/navigation";
@@ -156,10 +157,11 @@ const ClassRoster = ({ params }: { params: { className: string } }) => {
   return (
     <Box sx={{ p: 4, height: "100%", overflow: "auto" }}>
       {/* Header Section */}
-      <Box sx={{ mb: 4 }}>
+      <Box sx={{ mb: 4, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 2, flexWrap: "wrap" }}>
         <Typography variant="h4" component="h1" fontWeight="bold">
           Class Roster
         </Typography>
+        <StudentExportButton />
       </Box>
 
       {/* 

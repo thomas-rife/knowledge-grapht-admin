@@ -25,6 +25,7 @@ import {
 } from "@xyflow/react";
 
 import { getKnowledgeGraphData } from "@/app/classes/[className]/knowledge-graph/actions";
+import StudentExportButton from "@/components/student-export-button";
 import EditableNode from "@/components/custom-graph-nodes/editable-node";
 import { ViewModeContext } from "@/contexts/viewmode-context";
 import {
@@ -502,9 +503,10 @@ export default function StudentPerformancePage() {
 
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h4" gutterBottom>
-        Student Performance
-      </Typography>
+      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 2, flexWrap: "wrap", mb: 1 }}>
+        <Typography variant="h4">Student Performance</Typography>
+        <StudentExportButton studentId={studentId} />
+      </Box>
 
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
         Class: {classNameSlug || "(unknown)"} | Student:{" "}

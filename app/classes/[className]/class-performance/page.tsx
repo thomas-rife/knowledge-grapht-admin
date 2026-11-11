@@ -23,6 +23,7 @@ import {
   type Edge,
 } from "@xyflow/react";
 import { getKnowledgeGraphData } from "@/app/classes/[className]/knowledge-graph/actions";
+import StudentExportButton from "@/components/student-export-button";
 import EditableNode from "@/components/custom-graph-nodes/editable-node";
 import { ViewModeContext } from "@/contexts/viewmode-context";
 import {
@@ -498,9 +499,10 @@ const ClassPerformance = () => {
         minHeight: "100vh",
       }}
     >
-      <Typography variant="h4" gutterBottom>
-        Class Performance Overview
-      </Typography>
+      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 2, flexWrap: "wrap", mb: 2 }}>
+        <Typography variant="h4">Class Performance Overview</Typography>
+        <StudentExportButton />
+      </Box>
 
       {/* Key Stats */}
       <Grid container spacing={3} sx={{ mb: 3 }}>
