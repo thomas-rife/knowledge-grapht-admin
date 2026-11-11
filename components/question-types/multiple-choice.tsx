@@ -26,6 +26,7 @@ const MultipleChoiceQuestion = ({ disabled = false }: { disabled?: boolean }) =>
   const [lessonTopicNodeIds, setLessonTopicNodeIds] = useState<string[]>([]);
   const [topicsLoading, setTopicsLoading] = useState(true);
   const {
+    questionType,
     questionPrompt,
     setQuestionPrompt,
     questionSnippet,
@@ -78,6 +79,7 @@ const MultipleChoiceQuestion = ({ disabled = false }: { disabled?: boolean }) =>
 
   return (
     <QuestionEditor
+      questionType={questionType === "rearrange" ? "rearrange" : "multiple-choice"}
       prompt={questionPrompt}
       onPromptChange={setQuestionPrompt}
       snippet={questionSnippet}

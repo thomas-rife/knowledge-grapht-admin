@@ -58,6 +58,8 @@ import TopicPicker from "@/components/questions/topic-picker";
 import QuestionEditor, {
   createDefaultAnswerOptions,
 } from "@/components/questions/question-editor";
+import { getRearrangeDisplayOptions, getRearrangeDraft, splitRearrangeLine } from "@/lib/questions/rearrange";
+import RearrangePreview from "@/components/questions/rearrange-preview";
 
 type QuestionListRecord = {
   id: number;
@@ -119,7 +121,9 @@ const toQuestionListRecord = (
   topicLabels: question.topics ?? [],
   topicNodeIds: question.topic_node_ids ?? [],
   optionsRaw: question.answer_options ?? [],
-  answerOptions: normalizeOptions(question.answer_options ?? []),
+  answerOptions: question.question_type === "rearrange"
+    ? getRearrangeDisplayOptions(question.answer_options ?? [])
+    : normalizeOptions(question.answer_options ?? []),
   answer: question.answer ?? "",
   imageUrl: question.image_url ?? "",
 });
@@ -502,10 +506,14 @@ const QuestionDataGrid = ({
     setQuestionID(duplicate ? null : question.id);
     setQuestionType(question.questionType);
     setQuestionPrompt(question.prompt);
-    setQuestionSnippet(question.snippet);
+    const rearrangeDraft = question.questionType === "rearrange"
+      ? getRearrangeDraft(question.optionsRaw, question.snippet, question.answer)
+      : null;
+    setQuestionSnippet(rearrangeDraft?.snippet ?? question.snippet);
 
-    const formattedOptions = Array.isArray(question.optionsRaw)
-      ? question.optionsRaw.map((opt, i) => {
+    const draftOptions = rearrangeDraft?.options ?? question.optionsRaw;
+    const formattedOptions = Array.isArray(draftOptions)
+      ? draftOptions.map((opt, i) => {
           if (typeof opt === "object" && opt !== null) {
             return { ...opt };
           }
@@ -515,7 +523,7 @@ const QuestionDataGrid = ({
 
     setQuestionOptions(formattedOptions);
 
-    setCorrectAnswer(question.answer);
+    setCorrectAnswer(rearrangeDraft?.answer ?? question.answer);
 
     setTopicsCovered([...question.topicNodeIds]);
     setImageUrl(question.imageUrl);
@@ -874,7 +882,7 @@ const QuestionDataGrid = ({
                               </Box>
                               <Box
                                 component="span"
-                                sx={{ color: "success.main", fontWeight: 700 }}
+                                sx={{ color: "success.main", fontWeight: 700, fontFamily: question.questionType === "rearrange" ? "monospace" : undefined, whiteSpace: "pre-wrap" }}
                               >
                                 {question.answer}
                               </Box>
@@ -965,6 +973,8 @@ const QuestionDataGrid = ({
                                     variant="body2"
                                     key={`${question.id}-${optionIndex}`}
                                     sx={{
+                                      fontFamily: question.questionType === "rearrange" ? "monospace" : undefined,
+                                      whiteSpace: "pre-wrap",
                                       color:
                                         option === question.answer
                                           ? "success.main"
@@ -989,7 +999,9 @@ const QuestionDataGrid = ({
                           </Box>
 
                           <Stack spacing={2}>
-                            {question.snippet && (
+                            {question.questionType === "rearrange" && splitRearrangeLine(question.snippet) ? (
+                              <RearrangePreview line={question.snippet} options={question.answerOptions} />
+                            ) : question.snippet && (
                               <Box>
                                 <Typography variant="subtitle2">
                                   Snippet
@@ -1102,8 +1114,8 @@ const QuestionDataGrid = ({
           >
             <DialogTitle>
               {aiStep === "prompt"
-                ? "Generate a question with AI"
-                : "Review generated question"}
+                ? "Generate an MCQ with AI"
+                : "Review generated MCQ"}
             </DialogTitle>
             <DialogContent dividers>
               <Stack spacing={2} sx={{ mt: 1 }}>
@@ -1111,6 +1123,9 @@ const QuestionDataGrid = ({
 
                 {aiStep === "prompt" ? (
                   <>
+                    <Typography variant="body2" color="text.secondary">
+                      AI generation currently supports multiple-choice questions only.
+                    </Typography>
                     <TextField
                       label="What should this question assess?"
                       value={aiInstruction}

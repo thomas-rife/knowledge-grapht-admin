@@ -16,6 +16,12 @@ import { python } from "@codemirror/lang-python";
 import { useEffect, useMemo, useState } from "react";
 import TopicPicker from "@/components/questions/topic-picker";
 import { GraphTopic } from "@/types/content.types";
+import {
+  getDuplicateRearrangeOptionIndexes,
+  joinRearrangeLine,
+  splitRearrangeLine,
+} from "@/lib/questions/rearrange";
+import RearrangePreview from "./rearrange-preview";
 
 export const createDefaultAnswerOptions = () => ["", "", "", ""];
 
@@ -60,6 +66,7 @@ const QuestionEditor = ({
   preferredTopicNodeIds = [],
   disabled = false,
   autoFocus = false,
+  questionType = "multiple-choice",
 }: {
   prompt: string;
   onPromptChange: (value: string) => void;
@@ -78,16 +85,19 @@ const QuestionEditor = ({
   preferredTopicNodeIds?: string[];
   disabled?: boolean;
   autoFocus?: boolean;
+  questionType?: "multiple-choice" | "rearrange";
 }) => {
+  const isRearrange = questionType === "rearrange";
+  const line = splitRearrangeLine(snippet) ?? { before: "", after: "" };
   const [snippetVisible, setSnippetVisible] = useState(Boolean(snippet));
 
   useEffect(() => {
-    if (snippet) setSnippetVisible(true);
-  }, [snippet]);
+    if (!isRearrange && snippet) setSnippetVisible(true);
+  }, [snippet, isRearrange]);
 
   const duplicateOptionIndexes = useMemo(
-    () => getDuplicateAnswerOptionIndexes(options),
-    [options],
+    () => isRearrange ? getDuplicateRearrangeOptionIndexes(options) : getDuplicateAnswerOptionIndexes(options),
+    [options, isRearrange],
   );
 
   const updateOption = (index: number, value: string) => {
@@ -96,7 +106,7 @@ const QuestionEditor = ({
     nextOptions[index] = value;
     onOptionsChange(nextOptions);
 
-    if (correctAnswer === previousValue) {
+    if (previousValue && correctAnswer === previousValue) {
       onCorrectAnswerChange(value);
     }
   };
@@ -114,7 +124,7 @@ const QuestionEditor = ({
         autoFocus={autoFocus}
         required
         multiline
-        minRows={3}
+        minRows={isRearrange ? 1 : 3}
         label="Question prompt"
         placeholder="Enter the question students will answer"
         value={prompt}
@@ -122,6 +132,26 @@ const QuestionEditor = ({
         disabled={disabled}
         fullWidth
       />
+
+      {isRearrange && (
+        <Box>
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>Line to complete</Typography>
+          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "minmax(0, 1fr) 110px minmax(0, 1fr)" }, gap: 1, alignItems: "center" }}>
+            <TextField label="Text before blank" placeholder="e.g. print(" value={line.before}
+              onChange={(event) => onSnippetChange(joinRearrangeLine(event.target.value, line.after))}
+              disabled={disabled} fullWidth InputProps={{ sx: { fontFamily: "monospace" } }} />
+            <Box aria-label="Fixed answer blank" sx={{ p: 2, bgcolor: "action.disabledBackground", borderRadius: 1, borderBottom: 2, borderColor: "text.disabled", textAlign: "center", fontFamily: "monospace", color: "text.secondary" }}>
+              ________
+            </Box>
+            <TextField label="Text after blank" placeholder="e.g. )" value={line.after}
+              onChange={(event) => onSnippetChange(joinRearrangeLine(line.before, event.target.value))}
+              disabled={disabled} fullWidth InputProps={{ sx: { fontFamily: "monospace" } }} />
+          </Box>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            One answer option fills the blank. Either side can be empty; include any spaces the completed line needs.
+          </Typography>
+        </Box>
+      )}
 
       <TopicPicker
         topics={topics}
@@ -178,6 +208,7 @@ const QuestionEditor = ({
                     ? "Answer options must be different"
                     : undefined
                 }
+                InputProps={isRearrange ? { sx: { fontFamily: "monospace" } } : undefined}
                 fullWidth
               />
               <IconButton
@@ -195,18 +226,21 @@ const QuestionEditor = ({
         <Button
           startIcon={<Add />}
           onClick={() => onOptionsChange([...options, ""])}
-          disabled={disabled || options.length >= 10}
+          disabled={disabled || options.length >= (isRearrange ? 4 : 10)}
           sx={{ mt: 1 }}
         >
           Add option
         </Button>
+        {isRearrange && <Typography variant="body2" color="text.secondary">Use 2–4 options and mark the correct choice.</Typography>}
       </Box>
+
+      {isRearrange && <RearrangePreview line={snippet} options={options} disabled={disabled} />}
 
       <Box>
         <Typography variant="subtitle2" sx={{ mb: 1 }}>
           Optional content
         </Typography>
-        {snippetVisible ? (
+        {!isRearrange && (snippetVisible ? (
           <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1 }}>
             <Box sx={{ minWidth: 0, flex: 1 }}>
               <CodeMirror
@@ -233,7 +267,7 @@ const QuestionEditor = ({
           <Button onClick={() => setSnippetVisible(true)} disabled={disabled}>
             Add code snippet
           </Button>
-        )}
+        ))}
 
         <TextField
           label="Image URL"

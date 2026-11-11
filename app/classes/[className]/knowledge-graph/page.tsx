@@ -37,7 +37,7 @@ import HelperCard from "@/app/classes/[className]/knowledge-graph/helper-card";
 import KnowledgeGraphSkeleton from "@/components/skeletons/knowledge-graph-skeleton";
 import { ViewModeContext } from "@/contexts/viewmode-context";
 import { Json } from "@/supabase";
-import GenerateGraph from "./generate-graph";
+// import GenerateGraph from "./generate-graph";
 
 interface GraphDataResponse {
   success: boolean;
@@ -534,6 +534,7 @@ const KnowledgeGraph = ({ className }: { className: string }) => {
               Cancel
             </Button>
 
+            {/* Graph generation is hidden in the instructor graph view.
             <GenerateGraph
               className={className}
               hasExistingGraph={Boolean(savedGraphData?.nodes?.length)}
@@ -542,6 +543,7 @@ const KnowledgeGraph = ({ className }: { className: string }) => {
                 showToast("Generated graph applied");
               }}
             />
+            */}
           </Box>
         ) : reactFlowData ? (
           <Button variant="contained" color="success" onClick={enterEditMode}>

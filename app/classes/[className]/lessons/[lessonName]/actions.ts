@@ -1,6 +1,6 @@
 "use server";
 
-import { Question, MultipleChoice, Rearrange } from "@/types/content.types";
+import { Question, MultipleChoice } from "@/types/content.types";
 import { createClient } from "@/utils/supabase/server";
 import { NextResponse } from "next/server";
 import { getKnowledgeGraphData } from "../../knowledge-graph/actions";
@@ -10,6 +10,7 @@ import {
 } from "@/utils/graph-topics";
 
 import { generateGeminiStructured, getGeminiErrorMessage } from "@/utils/gemini";
+import { validateRearrangeQuestion } from "@/lib/questions/rearrange";
 
 const normalizeAnswerOptionKey = (value: string) =>
   value
@@ -437,31 +438,12 @@ export async function createNewQuestion(
     }
     questionID = insertedMC.question_id;
   } else if (questionData.questionType === "rearrange") {
-    const rearrangeData = questionData as Rearrange;
+    const rearrangeData = questionData;
     const { questionType, prompt, snippet, answerOptions, answer } =
       rearrangeData;
 
-    if (!prompt) {
-      console.error("Missing required fields for rearrange question");
-      return {
-        success: false,
-        error: "Missing required fields. Please provide a prompt.",
-      };
-    }
-
-    if (!answerOptions || answerOptions.length === 0) {
-      console.error("No tokens defined for rearrange question");
-      return {
-        success: false,
-        error:
-          "No tokens defined. Please create at least one token for the rearrange question.",
-      };
-    }
-
-    const studentViewOptions = processRearrangeOptionsData(
-      answerOptions,
-      snippet,
-    );
+    const validation = validateRearrangeQuestion({ prompt, snippet, answerOptions, answer });
+    if (!validation.success) return validation;
 
     const { data: insertedR, error: insertErrR } = await supabase
       .from("questions")
@@ -469,11 +451,8 @@ export async function createNewQuestion(
         question_type: questionType,
         prompt,
         snippet,
-        answer_options: [
-          { professorView: answerOptions },
-          { studentView: studentViewOptions },
-        ],
-        answer,
+        answer_options: validation.answerOptions,
+        answer: validation.answer,
         topics: resolvedTopics.labels,
         owner_id: user.id,
         image_url: normalizedImageUrl,
@@ -828,15 +807,12 @@ export async function updateQuestion(
       answerValidation.answerOptions,
     );
   } else if (questionType === "rearrange") {
-    const studentViewOptions = processRearrangeOptionsData(
-      answerOptions,
-      snippet,
-    );
-    updateData.answer_options = [
-      { professorView: answerOptions },
-      { studentView: studentViewOptions },
-    ];
-    console.log("Rearrange answer_options:", updateData.answer_options);
+    const validation = validateRearrangeQuestion({ prompt, snippet, answerOptions, answer });
+    if (!validation.success) return validation;
+    updateData.answer_options = validation.answerOptions;
+    updateData.answer = validation.answer;
+  } else {
+    return { success: false, error: "Unsupported question type." };
   }
 
   console.log("Final updateData to send to Supabase:", updateData);
@@ -1190,6 +1166,20 @@ export async function importQuestionsFromFile({
           }
 
           questionData.answer_options = options;
+        } else if (normalizedType === "rearrange") {
+          const validation = validateRearrangeQuestion({
+            prompt: questionData.prompt,
+            snippet: questionData.snippet ?? "",
+            answerOptions: (row.answer_options ?? "").split(";").map((option: string) => option.trim()),
+            answer: questionData.answer,
+          });
+          if (!validation.success) {
+            errors.push(`Row ${rowNum}: ${validation.error}`);
+            rowNum++;
+            continue;
+          }
+          questionData.answer_options = validation.answerOptions;
+          questionData.answer = validation.answer;
         } else {
           questionData.answer_options = [];
         }

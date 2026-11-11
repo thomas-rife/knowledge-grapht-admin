@@ -10,13 +10,16 @@ import {
   Alert,
   CircularProgress,
   Fade,
+  TextField,
+  MenuItem,
 } from "@mui/material";
 import { Close } from "@mui/icons-material";
-import { type Dispatch, type SetStateAction, useState, useEffect } from "react";
+import { type Dispatch, type SetStateAction, useState, useEffect, useRef } from "react";
 import MultipleChoiceQuestion from "@/components/question-types/multiple-choice";
 import { getDuplicateAnswerOptionIndexes } from "@/components/questions/question-editor";
 import { useQuestionContext } from "@/contexts/question-context";
 import { useParams } from "next/navigation";
+import { REARRANGE_BLANK, normalizeQuestionOptions, splitRearrangeLine, validateRearrangeQuestion } from "@/lib/questions/rearrange";
 
 const AddQuestionDialog = ({
   lessonName,
@@ -41,7 +44,31 @@ const AddQuestionDialog = ({
     resetStates,
     imageUrl,
     questionOptions,
+    setQuestionOptions,
+    questionSnippet,
+    setQuestionSnippet,
+    questionPrompt,
+    correctAnswer,
+    setCorrectAnswer,
   } = useQuestionContext();
+  const typeDrafts = useRef<Record<string, { snippet: string; options: any[]; answer: string }>>({});
+  useEffect(() => { if (open) typeDrafts.current = {}; }, [open]);
+
+  const changeQuestionType = (nextType: string) => {
+    if (nextType === questionType) return;
+    typeDrafts.current[questionType] = { snippet: questionSnippet, options: questionOptions, answer: correctAnswer };
+    const next = typeDrafts.current[nextType] ?? {
+      snippet: nextType === "rearrange" ? REARRANGE_BLANK : "",
+      options: Array.from({ length: nextType === "rearrange" ? 2 : 4 }, (_, index) => ({ [`option${index + 1}`]: "" })),
+      answer: "",
+    };
+    setQuestionType(nextType);
+    setQuestionSnippet(next.snippet);
+    setQuestionOptions(next.options);
+    setCorrectAnswer(next.answer);
+    setError("");
+  };
+
   const [buttonOperation, setButtonOperation] = useState<
     "Add Question" | "Update Question"
   >("Add Question");
@@ -61,10 +88,10 @@ const AddQuestionDialog = ({
     if (!open) return;
 
     // Only default when adding a new question
-    if (!questionID) {
+    if (!questionType) {
       setQuestionType("multiple-choice");
     }
-  }, [open, questionID, setQuestionType]);
+  }, [open, questionID, questionType, setQuestionType]);
 
   const handleDialogClose = () => {
     if (isSaving) return;
@@ -121,16 +148,13 @@ const AddQuestionDialog = ({
     setButtonOperation(questionID ? "Update Question" : "Add Question");
   }, [open, questionID]);
 
-  const normalizedOptions = questionOptions.map((option) => {
-    if (typeof option === "string") return option;
-    if (option && typeof option === "object") {
-      return String(Object.values(option)[0] ?? "");
-    }
-    return "";
-  });
-  const hasDuplicateAnswers =
-    questionType === "multiple-choice" &&
+  const normalizedOptions = normalizeQuestionOptions(questionOptions);
+  const hasDuplicateAnswers = questionType === "multiple-choice" &&
     getDuplicateAnswerOptionIndexes(normalizedOptions).size > 0;
+  const legacyRearrange = questionType === "rearrange" && !splitRearrangeLine(questionSnippet);
+  const rearrangeValid = questionType !== "rearrange" || validateRearrangeQuestion({
+    prompt: questionPrompt, snippet: questionSnippet, answerOptions: questionOptions, answer: correctAnswer,
+  }).success;
 
   return (
     <Dialog
@@ -153,7 +177,17 @@ const AddQuestionDialog = ({
         }}
         dividers
       >
-        {questionType === "multiple-choice" && (
+        {/* Keep question-type selection hidden while rearrange authoring is in progress.
+        <TextField select label="Question type" value={questionType || "multiple-choice"}
+          onChange={(event) => changeQuestionType(event.target.value)} disabled={isSaving} fullWidth>
+          <MenuItem value="multiple-choice">Multiple choice (MCQ)</MenuItem>
+          <MenuItem value="rearrange">Rearrange</MenuItem>
+        </TextField>
+        */}
+
+        {legacyRearrange ? (
+          <Alert severity="info">This question uses the older multi-blank format. This editor supports a single blank; the existing question has been left unchanged.</Alert>
+        ) : (questionType === "multiple-choice" || questionType === "rearrange") && (
           <MultipleChoiceQuestion disabled={isSaving} />
         )}
 
@@ -183,7 +217,7 @@ const AddQuestionDialog = ({
         <Button
           type="submit"
           variant="contained"
-          disabled={isSaving || hasDuplicateAnswers}
+          disabled={isSaving || hasDuplicateAnswers || !rearrangeValid}
           startIcon={isSaving ? <CircularProgress size={18} /> : null}
         >
           {isSaving ? "Saving..." : buttonOperation}

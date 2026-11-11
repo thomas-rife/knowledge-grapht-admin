@@ -3,6 +3,12 @@ import { resolveGraphTopicValues } from "@/utils/graph-topics";
 import type { StudentExportData } from "./types";
 
 type Column = { header: string; key: string; width: number };
+type TopicCounts = {
+  topic: string;
+  topic_node_id: string | null;
+  correct: number;
+  total: number;
+};
 
 export async function buildStudentWorkbook(data: StudentExportData) {
   const workbook = new ExcelJS.Workbook();
@@ -38,8 +44,9 @@ export async function buildStudentWorkbook(data: StudentExportData) {
     const resolved = resolveGraphTopicValues(data.graphTopics, values);
     // Preserve historical/unmatched labels instead of silently discarding them.
     return {
-      labels: [...resolved.labels, ...resolved.unresolved].join("; "),
-      ids: resolved.nodeIds.join("; "),
+      ...resolved,
+      labelText: [...resolved.labels, ...resolved.unresolved].join("; "),
+      idText: resolved.nodeIds.join("; "),
     };
   };
   const date = (value: string | null) => {
@@ -53,6 +60,22 @@ export async function buildStudentWorkbook(data: StudentExportData) {
 
   const students = addSheet("Students", identity);
   [...data.students].sort((a, b) => a.student_id.localeCompare(b.student_id)).forEach((student) => students.addRow(student));
+
+  const mastery = addSheet("Topic mastery", [
+    ...identity,
+    { header: "Topic", key: "topic", width: 40 },
+    { header: "Mastery", key: "mastery", width: 16 },
+    { header: "Topic node ID", key: "topic_node_id", width: 34 },
+  ]);
+  mastery.getColumn("mastery").numFmt = "0.00%";
+  const masteryByStudent = new Map<string, Map<string, TopicCounts>>();
+
+  const graphTopics = addSheet("Graph topics", [
+    { header: "Topic", key: "topic", width: 40 },
+    { header: "Topic node ID", key: "topic_node_id", width: 34 },
+  ]);
+  [...data.graphTopics].sort((a, b) => a.label.localeCompare(b.label) || a.id.localeCompare(b.id))
+    .forEach(({ label, id }) => graphTopics.addRow({ topic: label, topic_node_id: id }));
 
   const answers = addSheet("Question answers", [
     ...identity,
@@ -77,6 +100,20 @@ export async function buildStudentWorkbook(data: StudentExportData) {
       const storedIds = answer.question_id == null ? [] : questionTopics.get(answer.question_id);
       const covered = topics(Array.isArray(snapshot?.topics)
         ? snapshot.topics : storedIds?.length ? storedIds : question?.topics);
+      if (typeof answer.is_correct === "boolean") {
+        const counts = masteryByStudent.get(answer.student_id) ?? new Map<string, TopicCounts>();
+        masteryByStudent.set(answer.student_id, counts);
+        const tags = [
+          ...covered.nodeIds.map((id) => ({ key: `id:${id}`, label: graphLabels.get(id) ?? id, id })),
+          ...covered.unresolved.map((label) => ({ key: `label:${label}`, label, id: null })),
+        ];
+        for (const { key, label, id } of tags) {
+          const count = counts.get(key) ?? { topic: label, topic_node_id: id, correct: 0, total: 0 };
+          count.total += 1;
+          if (answer.is_correct) count.correct += 1;
+          counts.set(key, count);
+        }
+      }
       // ExcelJS treats strings literally, including responses starting with '='.
       const response = answer.selected_answer ?? (answer.raw_response == null
         ? "" : typeof answer.raw_response === "string" ? answer.raw_response : JSON.stringify(answer.raw_response));
@@ -87,12 +124,23 @@ export async function buildStudentWorkbook(data: StudentExportData) {
         lesson_id: answer.lesson_id == null ? null : String(answer.lesson_id),
         question: snapshot?.prompt ?? question?.prompt ?? "",
         snippet: snapshot && "snippet" in snapshot ? snapshot.snippet ?? "" : question?.snippet ?? "",
-        response, is_correct: answer.is_correct, topics: covered.labels, topic_ids: covered.ids,
+        response, is_correct: answer.is_correct, topics: covered.labelText, topic_ids: covered.idText,
         question_source: snapshot?.prompt != null ? "Saved snapshot" : question ? "Current question" : "Unavailable",
         answered_at: date(answer.answered_at),
       });
     });
   answers.getColumn("answered_at").numFmt = "yyyy-mm-dd hh:mm:ss";
+
+  for (const [studentId, counts] of masteryByStudent) {
+    const ordered = [...counts.values()].sort((a, b) => a.topic.localeCompare(b.topic)
+      || (a.topic_node_id ?? "").localeCompare(b.topic_node_id ?? ""));
+    for (const { topic, topic_node_id, correct, total } of ordered) {
+      mastery.addRow({
+        ...studentsById.get(studentId),
+        student_id: studentId, topic, mastery: correct / total, topic_node_id,
+      });
+    }
+  }
 
   const lessons = addSheet("Lessons", [
     { header: "Lesson ID", key: "lesson_id", width: 14 },
@@ -103,7 +151,7 @@ export async function buildStudentWorkbook(data: StudentExportData) {
   [...data.lessons].sort((a, b) => a.lesson_id - b.lesson_id).forEach((lesson) => {
     const storedIds = lessonTopics.get(lesson.lesson_id);
     const covered = topics(storedIds?.length ? storedIds : lesson.topics);
-    lessons.addRow({ lesson_id: String(lesson.lesson_id), name: lesson.name, topics: covered.labels, topic_ids: covered.ids });
+    lessons.addRow({ lesson_id: String(lesson.lesson_id), name: lesson.name, topics: covered.labelText, topic_ids: covered.idText });
   });
 
   const sessions = addSheet("Quiz sessions", [

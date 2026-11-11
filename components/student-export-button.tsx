@@ -8,6 +8,7 @@ import {
   ListItemIcon, ListItemText, Snackbar, TextField, Typography,
 } from "@mui/material";
 import { Download } from "@mui/icons-material";
+import { getExportDateWindow } from "@/lib/student-export/date-range";
 import type { ExportStudent } from "@/lib/student-export/types";
 
 export default function StudentExportButton({ studentId }: { studentId?: string }) {
@@ -16,6 +17,8 @@ export default function StudentExportButton({ studentId }: { studentId?: string 
   const [students, setStudents] = useState<ExportStudent[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -24,10 +27,13 @@ export default function StudentExportButton({ studentId }: { studentId?: string 
   useEffect(() => {
     if (!open) return;
     const controller = new AbortController();
+    const today = new Date().toISOString().slice(0, 10);
     setLoading(true);
     setStudents([]);
     setSelected(new Set());
     setSearch("");
+    setStartDate("");
+    setEndDate(today);
     setError(null);
     (async () => {
       try {
@@ -41,6 +47,9 @@ export default function StudentExportButton({ studentId }: { studentId?: string 
           .sort((a, b) => (a.display_name || a.email || a.student_id)
             .localeCompare(b.display_name || b.email || b.student_id));
         if (controller.signal.aborted) return;
+        const firstActivityDate = result.firstActivityDate;
+        setStartDate(typeof firstActivityDate === "string" && firstActivityDate <= today
+          ? firstActivityDate : today);
         setStudents(roster);
         setSelected(new Set(roster.map((student) => student.student_id)));
       } catch (error) {
@@ -58,6 +67,7 @@ export default function StudentExportButton({ studentId }: { studentId?: string 
       .some((value) => value.toLowerCase().includes(term)));
   }, [students, search]);
   const visibleSelected = visible.filter((student) => selected.has(student.student_id)).length;
+  const dateWindow = getExportDateWindow(startDate, endDate);
   const toggleStudent = (id: string) => setSelected((previous) => {
     const next = new Set(previous);
     if (next.has(id)) next.delete(id); else next.add(id);
@@ -71,12 +81,13 @@ export default function StudentExportButton({ studentId }: { studentId?: string 
   });
 
   const download = async () => {
+    if (!dateWindow || !selected.size) return;
     setExporting(true);
     setError(null);
     try {
       const response = await fetch("/api/student-export", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ className, studentIds: Array.from(selected) }),
+        body: JSON.stringify({ className, studentIds: Array.from(selected), startDate, endDate }),
       });
       if (!response.ok) {
         const result = await response.json();
@@ -108,8 +119,7 @@ export default function StudentExportButton({ studentId }: { studentId?: string 
         <DialogTitle id="student-export-title">Export student activity</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Download an Excel workbook with students, question answers and their topics, lesson topics,
-            and quiz sessions with selected review topics. Includes all recorded activity in this class.
+            Download an Excel workbook with question answers, topic mastery, and quiz sessions for the selected students.
           </Typography>
           {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
           {loading ? (
@@ -118,6 +128,24 @@ export default function StudentExportButton({ studentId }: { studentId?: string 
             </Box>
           ) : students.length ? (
             <>
+              <Box component="fieldset" sx={{ m: 0, p: 0, border: 0, minWidth: 0, mb: 2 }}>
+                <Typography component="legend" variant="subtitle2" sx={{ mb: 1 }}>
+                  Activity dates (UTC, inclusive)
+                </Typography>
+                <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))" }, gap: 1.5 }}>
+                  <TextField type="date" label="Start date" size="small" required
+                    value={startDate} onChange={(event) => setStartDate(event.target.value)}
+                    slotProps={{ inputLabel: { shrink: true }, htmlInput: { max: endDate || undefined } }}
+                    error={!dateWindow} disabled={exporting} />
+                  <TextField type="date" label="End date" size="small" required
+                    value={endDate} onChange={(event) => setEndDate(event.target.value)}
+                    slotProps={{ inputLabel: { shrink: true }, htmlInput: { min: startDate || undefined } }}
+                    error={!dateWindow} disabled={exporting} />
+                </Box>
+                {!dateWindow && <Typography variant="caption" color="error" role="alert">
+                  Choose a start date on or before the end date.
+                </Typography>}
+              </Box>
               {!studentId && (
                 <>
                   <TextField fullWidth size="small" label="Search by name, email, or student ID"
@@ -156,7 +184,7 @@ export default function StudentExportButton({ studentId }: { studentId?: string 
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpen(false)} disabled={exporting}>Cancel</Button>
-          <Button variant="contained" onClick={download} disabled={loading || exporting || !selected.size}
+          <Button variant="contained" onClick={download} disabled={loading || exporting || !selected.size || !dateWindow}
             startIcon={exporting ? <CircularProgress size={18} color="inherit" /> : <Download />}>
             {exporting ? "Preparing export…" : "Download Excel"}
           </Button>

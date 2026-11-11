@@ -42,9 +42,6 @@ export type Rearrange = {
   snippet: string;
   topics: string[];
   topicNodeIds?: string[];
-  answerOptions: {
-    professorView: { [key: string]: string }[];
-    studentView?: { [key: string]: string }[];
-  }[];
+  answerOptions: string[];
   answer: string;
 };
